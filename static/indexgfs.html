@@ -1,0 +1,1145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LFTR Marine Globe</title>
+  <link rel="stylesheet" href="/static/gfs.css?v=20260607-cloud-unified-shell1">
+<style>
+.overlay-pill.viridian-pill{border-color:rgba(111,255,210,.72);box-shadow:0 0 16px rgba(64,130,109,.35);}
+.overlay-pill.viridian-pill.active{background:rgba(64,130,109,.22);color:#d6fff2;}
+.overlay-pill.party-pill{border-color:rgba(255,214,10,.65);box-shadow:0 0 14px rgba(255,214,10,.20);}
+.overlay-pill.party-pill.active{color:#fff7cc;background:rgba(74,18,78,.42);border-color:rgba(191,90,242,.92);box-shadow:0 0 0 1px rgba(255,255,255,.14) inset,0 0 8px rgba(255,59,48,.38),0 0 14px rgba(52,199,89,.32),0 0 20px rgba(10,132,255,.26),0 0 26px rgba(191,90,242,.22);}
+</style>
+</head>
+<body>
+  <div class="gfs-root">
+    <header class="topbar">
+      <div class="topbar-title">
+        <h1>LFTR Marine Intelligence Globe</h1>
+        <form id="fishAiBar" class="fishai-bar" autocomplete="off">
+          <label class="fishai-label" for="fishAiInput">FISHAI</label>
+          <input id="fishAiInput" class="fishai-input" type="text" spellcheck="false" aria-label="FISHAI direction and fishing intel command" placeholder="go to Newport pier • tilt 60 heading 240 • best leopard shark shore rig • target halibut high score">
+          <button id="fishAiRun" class="fishai-run" type="submit">Run/Search</button>
+        </form>
+        <div id="fishAiOutput" class="fishai-output" aria-live="polite">FISHAI ready</div>
+      </div>
+      <div class="topbar-right">
+        <div class="overlay-pills" role="group" aria-label="Globe layers">
+          <button id="locationsPill" class="overlay-pill active" type="button" aria-pressed="true" data-layer="locations" data-layer-enabled="true">Locations</button>
+          <span class="cloud-pill-wrap"><button id="cloudsPill" class="overlay-pill active" type="button" aria-pressed="true" data-layer="clouds">Clouds</button><label class="cloud-alpha-control" title="Cloud shell and particle transparency"><span>shell</span><input id="cloudShellAlphaSlider" type="range" min="0" max="100" step="5" value="92" aria-label="Cloud shell and particle transparency"><b id="cloudShellAlphaValue">92%</b></label></span>
+          <button id="partyTimePill" class="overlay-pill party-pill" type="button" aria-pressed="false" data-action="party-time" title="Cloud edge party mode">Party Time</button>
+          <button id="rainPill" class="overlay-pill active" type="button" aria-pressed="true" data-layer="rain">Rain</button>
+          <button id="lightningPill" class="overlay-pill active" type="button" aria-pressed="true" data-layer="lightning">Lightning</button>
+          <button id="jetstreamBalloonsPill" class="overlay-pill active" type="button" aria-pressed="true" data-layer="jetstream" data-layer-enabled="true">Jetstream</button>
+          <button id="baitPill" class="overlay-pill active" type="button" aria-pressed="true" data-layer="bait" data-layer-enabled="true">Bait</button>
+          <button id="sharkIntelPill" class="overlay-pill viridian-pill active" type="button" aria-pressed="true" data-layer="shark-intel" data-layer-enabled="true" title="Leopard 36–42 in prime slot + tiger/sand shark watch">Shark Intel</button>
+          <button id="inlandWaterPill" class="overlay-pill viridian-pill active" type="button" aria-pressed="true" data-layer="inland-water" data-layer-enabled="true">Inland Waters</button>
+          <button id="boaterPill" class="overlay-pill active" type="button" aria-pressed="true" data-layer="boater" data-layer-enabled="true">Boater</button>
+        </div>
+        <div id="sceneProgressStrip" class="scene-progress-strip" role="status" aria-live="polite" aria-label="Scene cache progress">
+          <div class="scene-progress-row" data-progress-kind="scene">
+            <span class="scene-progress-label">Scene</span>
+            <span class="scene-progress-track"><span id="sceneProgressFill" class="scene-progress-fill"></span></span>
+            <span id="sceneProgressText" class="scene-progress-text">cache idle</span>
+          </div>
+          <div class="scene-progress-row" data-progress-kind="ttl">
+            <span class="scene-progress-label">2 min</span>
+            <span class="scene-progress-track"><span id="ttlProgressFill" class="scene-progress-fill"></span></span>
+            <span id="ttlProgressText" class="scene-progress-text">TTL ready</span>
+          </div>
+          <div class="scene-progress-row" data-progress-kind="layers">
+            <span class="scene-progress-label">Layers</span>
+            <span class="scene-progress-track"><span id="layerProgressFill" class="scene-progress-fill"></span></span>
+            <span id="layerProgressText" class="scene-progress-text">waiting</span>
+          </div>
+        </div>
+        <div class="topbar-status-wrap">
+          <div id="status" class="topbar-status">Booting…</div>
+          <textarea id="debugPrompt" class="debug-prompt" rows="3" spellcheck="false" wrap="soft" placeholder="Live API / pill / layer debug output…"></textarea>
+        </div>
+      </div>
+    </header>
+
+    <main class="globe-shell glass">
+      <gmp-map-3d id="globe" mode="hybrid" center="34.2,-120,120" range="1800000" tilt="42" heading="10" default-ui-hidden></gmp-map-3d>
+      <div id="globeFallback" class="fallback hidden">3D globe unavailable. Configure GOOGLE_MAPS_API_KEY with maps3d enabled.</div>
+    </main>
+
+    <aside id="locationHud" class="hud glass closed" aria-hidden="true">
+      <div class="hud-head">
+        <div>
+          <div class="eyebrow">Location intelligence</div>
+          <h2 id="hudLocation">Select fish beacon</h2>
+          <div id="hudCoords" class="muted"></div>
+          <div id="hudPositioning" class="muted">Marker wiring pending</div>
+          <div id="hudWaterbody" class="muted">Habitat lens pending</div>
+          <div id="hudStatusLine" class="hud-status-line">Awaiting beacon selection</div>
+        </div>
+        <button id="hudClose">Close</button>
+      </div>
+
+      <section class="hud-card hero-card">
+        <div class="score-head">
+          <div>
+            <div class="eyebrow">Fishing opportunity</div>
+            <div id="hudOpportunityScore" class="hero-score">—</div>
+          </div>
+          <div class="hero-meta">
+            <div id="hudConfidence">—</div>
+            <div id="hudTrend">—</div>
+          </div>
+        </div>
+        <div class="intel-meter"><span id="hudOpportunityFill"></span></div>
+        <div id="hudSafetyLine" class="muted">—</div>
+      </section>
+
+      <section class="hud-card">
+        <h3>Bait intelligence</h3>
+        <div class="split-line">
+          <strong id="hudBaitSummary">—</strong>
+          <div class="intel-meter slim"><span id="hudBaitFill"></span></div>
+        </div>
+        <ul id="hudBaitDrivers" class="intel-list"><li>Waiting on local bait solve</li></ul>
+        <div id="hudBaitMovement" class="muted">—</div>
+      </section>
+
+      <section class="hud-card">
+        <h3>Species likelihood</h3>
+        <div class="species-row"><span id="hudPredatorLabel1">Species 1</span><div class="intel-meter slim"><span id="hudPredatorFill1"></span></div><strong id="hudPredatorScore1">—</strong></div>
+        <div class="species-row"><span id="hudPredatorLabel2">Species 2</span><div class="intel-meter slim"><span id="hudPredatorFill2"></span></div><strong id="hudPredatorScore2">—</strong></div>
+        <div class="species-row"><span id="hudPredatorLabel3">Species 3</span><div class="intel-meter slim"><span id="hudPredatorFill3"></span></div><strong id="hudPredatorScore3">—</strong></div>
+        <div class="species-row"><span id="hudPredatorLabel4">Species 4</span><div class="intel-meter slim"><span id="hudPredatorFill4"></span></div><strong id="hudPredatorScore4">—</strong></div>
+      </section>
+
+      <section class="hud-card">
+        <h3>Shark Intel</h3>
+        <div class="split-line">
+          <strong id="hudSharkSummary">Waiting on SST-valid shark solve</strong>
+          <div class="intel-meter slim"><span id="hudSharkFill"></span></div>
+        </div>
+        <ul id="hudSharkDrivers" class="intel-list"><li>Open a coastal/ocean beacon to sample leopard, tiger, and sand-shark intel</li></ul>
+        <div id="hudSharkDepth" class="muted">Shark depth / SST land mask pending</div>
+      </section>
+
+      <section class="hud-card">
+        <h3>Environmental setup</h3>
+        <div id="hudEnvNow">—</div>
+        <div id="hudEnvMore" class="muted" style="margin-top:6px">—</div>
+        <div id="hudEnvPosition" class="muted" style="margin-top:6px">—</div>
+      </section>
+
+      <section class="hud-card">
+        <h3>Fishing window</h3>
+        <div id="hudWindowText">—</div>
+        <div id="hudMoonBias" class="muted" style="margin-top:6px">—</div>
+      </section>
+
+      <section class="hud-card dual-grid">
+        <div>
+          <h3>Why this spot</h3>
+          <ul id="hudReasons" class="intel-list"><li>Waiting on signal stack</li></ul>
+        </div>
+        <div>
+          <h3>Risks / watchouts</h3>
+          <ul id="hudRisks" class="intel-list"><li>Waiting on signal stack</li></ul>
+        </div>
+      </section>
+
+      <section class="hud-card">
+        <h3>Video frame</h3>
+        <div id="hudVideoFrame" class="video-frame"></div>
+      </section>
+
+      <section class="hud-card">
+        <h3>Recent activity</h3>
+        <div id="hudLastReport" class="muted">—</div>
+        <ul id="hudReports"></ul>
+      </section>
+
+      <section class="hud-card">
+        <h3>What to fish with</h3>
+        <div id="hudTackle">Small live bait / anchovy / sabiki at active periods.</div>
+      </section>
+
+      <section class="hud-card">
+        <h3>New report / upload a video / go live</h3>
+        <textarea id="hudReportInput" placeholder="Add report"></textarea>
+        <div class="row">
+          <button id="hudSaveReport">Save report</button>
+          <input id="hudUploadFile" type="file" accept="video/*">
+          <button id="hudUploadVideo">Upload</button>
+        </div>
+        <div class="row">
+          <button id="hudGoLive">Go Live</button>
+          <button id="hudStopLive">Stop Live</button>
+        </div>
+      </section>
+    </aside>
+
+  </div>
+
+
+  <script type="application/json" id="gfs-bootstrap-diagnostics" class="hidden">
+    [gfs] bootstrap stage: fish start
+    await loadFish();
+    fish markers deferred until maps3d/marker libraries are ready
+    state.markerRetryTimer = setTimeout
+    [gfs] bootstrap stage: balloons start
+    await renderJetBalloons();
+    [gfs] bootstrap stage: weather start
+    await loadClouds(true);
+    [gfs] weather bootstrap failed, fish/balloons preserved
+    scene payload parsed but contains no weather arrays; keeping fish/balloons active
+    schema failure url=
+    content-type=
+  </script>
+
+
+
+  <script>
+    (function () {
+      var panel = document.getElementById('debugPrompt');
+      var maxLines = 1800;
+      var lines = [];
+      function stringify(value, depth) {
+        depth = depth || 0;
+        if (value === undefined) return 'undefined';
+        if (value === null) return 'null';
+        if (typeof value === 'string') return value;
+        if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value);
+        if (value instanceof Error) return value.stack || (value.name + ': ' + value.message);
+        if (depth > 2) return '[Object]';
+        try {
+          if (Array.isArray(value)) {
+            return '[' + value.map(function (v) { return stringify(v, depth + 1); }).join(', ') + ']';
+          }
+          return JSON.stringify(value, function (_k, v) {
+            if (typeof v === 'function') return '[Function]';
+            if (v instanceof Error) return v.stack || (v.name + ': ' + v.message);
+            return v;
+          });
+        } catch (_) {
+          try { return String(value); } catch (_) { return '[Unserializable]'; }
+        }
+      }
+      function appendLine(level, argsLike) {
+        if (!panel) return;
+        var ts = new Date();
+        var stamp = ts.toLocaleTimeString('en-US', { hour12: false }) + '.' + String(ts.getMilliseconds()).padStart(3, '0');
+        var args = Array.prototype.slice.call(argsLike || []);
+        var msg = args.map(function (arg) { return stringify(arg, 0); }).join(' ');
+        lines.push('[' + stamp + '] [' + level + '] ' + msg);
+        if (lines.length > maxLines) lines = lines.slice(lines.length - maxLines);
+        var stick = (panel.scrollTop + panel.clientHeight + 24) >= panel.scrollHeight;
+        panel.value = lines.join('\n');
+        if (stick) panel.scrollTop = panel.scrollHeight;
+      }
+      if (panel) {
+        panel.readOnly = true;
+        panel.setAttribute('aria-label', 'Debug output');
+        panel.placeholder = 'Live debug output…';
+      }
+      window.__gfsDebugPanelLog = function (level) {
+        appendLine(level || 'LOG', Array.prototype.slice.call(arguments, 1));
+      };
+      ['log', 'info', 'warn', 'error', 'debug'].forEach(function (name) {
+        var original = console[name] ? console[name].bind(console) : console.log.bind(console);
+        console[name] = function () {
+          appendLine(name.toUpperCase(), arguments);
+          return original.apply(console, arguments);
+        };
+      });
+      window.addEventListener('error', function (ev) {
+        appendLine('ERROR', ['window.error', ev.message || ev.error || 'unknown error', ev.filename || '', ev.lineno || 0, ev.colno || 0]);
+      });
+      window.addEventListener('unhandledrejection', function (ev) {
+        var reason = ev.reason && (ev.reason.stack || ev.reason.message) ? (ev.reason.stack || ev.reason.message) : stringify(ev.reason, 0);
+        appendLine('ERROR', ['unhandledrejection', reason]);
+      });
+      function summarizePayload(value) {
+        if (!value || typeof value !== 'object') return { type: typeof value };
+        var out = {};
+        function set(k, v) { if (v !== undefined && v !== null && v !== '') out[k] = v; }
+        function count(k, v) { if (Array.isArray(v)) out[k] = v.length; }
+        set('status', value.status || value.payload_state || value.source_state || value.mode);
+        set('source', value.source || value.data_source || value.provider || (value.ocean && value.ocean.source));
+        set('cycle', value.cycle || value.analysis_time || value.resolved_time || value.valid_time);
+        set('cache', value.cache_hit || value.cache_state || value.cache || value.from_cache);
+        set('tier', value.scene_tier || (value.scene_plan && value.scene_plan.tier));
+        if (value.bbox) set('bbox', value.bbox);
+        count('tiles', value.tiles);
+        count('features', value.features);
+        count('polygons', value.polygons || (value.bait && value.bait.polygons));
+        count('outer_polygons', value.outer_polygons || (value.bait && value.bait.outer_polygons));
+        count('inner_polygons', value.inner_polygons || (value.bait && value.bait.inner_polygons));
+        count('core_polygons', value.core_polygons || (value.bait && value.bait.core_polygons));
+        count('boats', value.boats);
+        count('flashes', value.flashes);
+        count('regions', value.regions);
+        count('cloud_items', value.items || (value.clouds && value.clouds.items) || (value.clouds && value.clouds.scene && value.clouds.scene.clouds));
+        count('rain_columns', value.precip_columns || (value.weather && value.weather.precip_columns) || (value.rain && value.rain.items));
+        count('points', value.points || value.samples || value.ocean_points);
+        if (value.source_resolution_deg != null) out.source_resolution_deg = value.source_resolution_deg;
+        if (value.derived_resolution_deg != null) out.derived_resolution_deg = value.derived_resolution_deg;
+        if (value.stride != null) out.stride = value.stride;
+        if (value.truth_contract) out.truth_contract = value.truth_contract;
+        count('swells', value.swells || (value.waves && value.waves.swells));
+        if (value.lightning) out.lightning = summarizePayload(value.lightning);
+        if (value.clouds) out.clouds = summarizePayload(value.clouds);
+        if (value.rain) out.rain = summarizePayload(value.rain);
+        if (value.bait) out.bait = summarizePayload(value.bait);
+        if (value.oceanPoints) out.oceanPoints = summarizePayload(value.oceanPoints);
+        return out;
+      }
+      function isGfsApi(url) {
+        return String(url || '').indexOf('/gfs/api/') >= 0;
+      }
+      function pillStates() {
+        var result = {};
+        document.querySelectorAll('.overlay-pill[data-layer]').forEach(function (btn) {
+          var layer = btn.getAttribute('data-layer');
+          result[layer] = {
+            active: btn.classList.contains('active'),
+            pressed: btn.getAttribute('aria-pressed'),
+            userPref: window.__gfsLayerUserPrefs && window.__gfsLayerUserPrefs[layer],
+            enabledAttr: btn.getAttribute('data-layer-enabled')
+          };
+        });
+        return result;
+      }
+      window.__gfsDebugEvent = function (topic, detail) {
+        appendLine('GFS', [topic, detail || {}]);
+      };
+      window.__gfsDebugApiSummary = summarizePayload;
+      var nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+      if (nativeFetch) {
+        window.fetch = function (input, init) {
+          var method = (init && init.method) || 'GET';
+          var url = typeof input === 'string' ? input : (input && input.url) || '';
+          var started = performance.now();
+          var api = isGfsApi(url);
+          appendLine(api ? 'API' : 'FETCH', ['start', method, url]);
+          return nativeFetch(input, init).then(function (res) {
+            var elapsed = Math.round(performance.now() - started);
+            appendLine(api ? 'API' : 'FETCH', ['end', method, url, 'status=' + res.status, 'ms=' + elapsed]);
+            if (api) {
+              try {
+                res.clone().json().then(function (json) {
+                  appendLine('DATA', [url, summarizePayload(json)]);
+                  if (String(url).indexOf('/gfs/api/lightning') >= 0 || (json && json.lightning)) {
+                    appendLine('LIGHTNING', [url, summarizePayload(json.lightning || json)]);
+                  }
+                }).catch(function () {
+                  appendLine('DATA', [url, 'json summary unavailable']);
+                });
+              } catch (_) {}
+            }
+            return res;
+          }).catch(function (err) {
+            appendLine(api ? 'API' : 'FETCH', ['fail', method, url, (err && (err.message || err.name)) ? (err.message || err.name) : String(err), 'ms=' + Math.round(performance.now() - started)]);
+            throw err;
+          });
+        };
+      }
+      document.addEventListener('click', function (ev) {
+        var btn = ev.target && ev.target.closest && ev.target.closest('.overlay-pill[data-layer]');
+        if (!btn) return;
+        appendLine('PILL', ['tap/click', btn.getAttribute('data-layer'), 'active=' + btn.classList.contains('active'), 'pressed=' + btn.getAttribute('aria-pressed'), pillStates()]);
+      }, true);
+      document.addEventListener('dblclick', function (ev) {
+        var btn = ev.target && ev.target.closest && ev.target.closest('.overlay-pill[data-layer]');
+        if (!btn) return;
+        appendLine('PILL', ['double-click', btn.getAttribute('data-layer'), pillStates()]);
+      }, true);
+      window.addEventListener('load', function () {
+        appendLine('PILL', ['initial states', pillStates()]);
+      });
+      setInterval(function () {
+        appendLine('STATE', ['pills', pillStates(), 'sky=' + ((document.body && document.body.getAttribute('data-sky')) || 'unset')]);
+      }, 15000);
+      appendLine('INFO', ['debug panel online — API calls, pill states, lightning, payload summaries']);
+    })();
+  </script>
+
+
+  <script>
+    window.updateHUD = function updateHUD(sample) {
+      var el = document.getElementById('hudHoverWeather');
+      if (!el || !sample) return;
+      var temp = Number(sample.temperature_c);
+      var pressure = Number(sample.pressure_hpa);
+      var wind = Number(sample.wind_speed_mps);
+      el.textContent = 'Temp ' + (Number.isFinite(temp) ? temp.toFixed(1) : 'n/a') + '°C • Pressure ' + (Number.isFinite(pressure) ? pressure.toFixed(1) : 'n/a') + ' hPa • Wind ' + (Number.isFinite(wind) ? wind.toFixed(1) : 'n/a') + ' m/s';
+    };
+
+    window.__gfsJetOrbMarkers = [];
+    window.__gfsJetOrbState = { items: [], rafId: 0, lastTs: 0, active: false, initialized: false, visible: true };
+    window.__gfsLayerState = window.__gfsLayerState || {};
+    try { delete window.__gfsLayerState.oceanfx; } catch (_) {}
+    if (typeof window.__gfsLayerState.jetstreamBalloons !== 'boolean') window.__gfsLayerState.jetstreamBalloons = true;
+    window.__gfsJetstreamDisabled = window.__gfsLayerState.jetstreamBalloons === false;
+    window.__gfsJetstreamPillOn = window.__gfsLayerState.jetstreamBalloons !== false;
+
+    var JET_ORB_COUNT = Number(window.GFS_JET_ORB_COUNT || 8);
+    var JET_ORB_CLOSE_MIN = Number(window.GFS_JET_ORB_CLOSE_MIN || 1);
+    var JET_ORB_CLOSE_MAX = Number(window.GFS_JET_ORB_CLOSE_MAX || 2);
+    var JET_ORB_ALTITUDE_M = 10500;
+    var JETSTREAM_REQUIRE_LIVE_GFS = true;
+    var JETSTREAM_VISUAL_FALLBACK_ALLOWED = window.GFS_JETSTREAM_VISUAL_FALLBACK_ALLOWED === true;
+    var JETSTREAM_CHEAP_VISUAL_MODE = false;
+    var JET_UPDATE_TARGET_FPS = Number(window.GFS_JET_UPDATE_TARGET_FPS || 2);
+
+    function getWindColor(mph) {
+      // Half-scale color mapping: the real speed label is unchanged, but color
+      // ramps twice as quickly so jet colors are vivid at common speeds.
+      var scaled = (Number(mph) || 0) * 2.0;
+      if (scaled >= 200) return '#111111';
+      if (scaled >= 170) return '#ff4d4f';
+      if (scaled >= 130) return '#ff9a3d';
+      if (scaled >= 95) return '#ffd84d';
+      if (scaled >= 60) return '#00c8ff';
+      return '#00d26a';
+    }
+
+    function jetTextColor(hex) {
+      return (hex === '#ffd84d') ? '#0b1220' : '#ffffff';
+    }
+
+    function randomJetLatitude() {
+      var u = (Math.random() * 2) - 1;
+      return Math.max(-72, Math.min(72, Math.asin(u) * 180 / Math.PI));
+    }
+
+    function wrapLongitude(lon) {
+      var v = Number(lon) || 0;
+      while (v < -180) v += 360;
+      while (v >= 180) v -= 360;
+      return v;
+    }
+
+    function clampLatitude(lat) {
+      return Math.max(-72, Math.min(72, Number(lat) || 0));
+    }
+
+    var GLOBAL_JET_FETCH_BBOX = '-126.0,29.0,-114.0,39.0';
+    var GLOBAL_JET_FETCH_QUALITY = 'coarse';
+    var GLOBAL_JET_FETCH_TTL_MS = 60 * 60 * 1000;
+    window.__gfsGlobalJetWind = window.__gfsGlobalJetWind || { fetchedAt: 0, pending: null, bbox: null, windU: null, windV: null, vectors: null, validTime: null, source: null, quality: null, error: null };
+
+    function parseJetBbox(value) {
+      if (Array.isArray(value) && value.length >= 4) {
+        return { west: Number(value[0]), south: Number(value[1]), east: Number(value[2]), north: Number(value[3]) };
+      }
+      if (value && typeof value === 'object') {
+        return {
+          west: Number(value.west ?? value[0]),
+          south: Number(value.south ?? value[1]),
+          east: Number(value.east ?? value[2]),
+          north: Number(value.north ?? value[3]),
+        };
+      }
+      var parts = String(value || '').split(',').map(Number);
+      if (parts.length >= 4) return { west: parts[0], south: parts[1], east: parts[2], north: parts[3] };
+      return null;
+    }
+
+    function validJetBbox(b) {
+      return b && Number.isFinite(b.west) && Number.isFinite(b.south) && Number.isFinite(b.east) && Number.isFinite(b.north) && b.east > b.west && b.north > b.south;
+    }
+
+    function activeJetViewportBbox() {
+      var contract = window.__gfsBboxContract || {};
+      var b = parseJetBbox(contract.jetstream_bbox || contract.visible_bbox || window.__gfsJetViewportBbox || window.__gfsLastBbox || window.currentBBox || GLOBAL_JET_FETCH_BBOX);
+      return validJetBbox(b) ? b : parseJetBbox(GLOBAL_JET_FETCH_BBOX);
+    }
+
+    function activeJetFetchBbox() {
+      var contract = window.__gfsBboxContract || {};
+      var b = parseJetBbox(contract.jetstream_fetch_bbox || window.__gfsJetFetchBbox || contract.weather_fetch_bbox || activeJetViewportBbox());
+      return validJetBbox(b) ? b : activeJetViewportBbox();
+    }
+
+    function activeJetBboxString() {
+      var b = activeJetViewportBbox();
+      return [b.west, b.south, b.east, b.north].map(function (v) { return Number(v).toFixed(4); }).join(',');
+    }
+
+    function activeJetFetchBboxString() {
+      var b = activeJetFetchBbox();
+      return [b.west, b.south, b.east, b.north].map(function (v) { return Number(v).toFixed(4); }).join(',');
+    }
+
+    function activeJetCameraRange() {
+      var globe = document.getElementById('globe');
+      var candidates = [window.__gfsJetCameraRange, globe && globe.range, globe && globe.camera && globe.camera.range, globe && globe.getAttribute && globe.getAttribute('range')];
+      for (var i = 0; i < candidates.length; i += 1) {
+        var n = Number(candidates[i]);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+      return 1800000;
+    }
+
+    function desiredJetBalloonCount() {
+      var range = activeJetCameraRange();
+      var base = Math.max(1, Math.min(20, Number(window.GFS_JET_ORB_COUNT || JET_ORB_COUNT) || 20));
+      if (range <= 55000) return Math.max(JET_ORB_CLOSE_MIN, Math.min(JET_ORB_CLOSE_MAX, 2));
+      if (range <= 140000) return Math.max(JET_ORB_CLOSE_MIN, Math.min(JET_ORB_CLOSE_MAX, 3));
+      if (range <= 350000) return Math.min(6, base);
+      if (range <= 900000) return Math.min(12, base);
+      return base;
+    }
+
+    function jetViewportSignature() {
+      var b = activeJetViewportBbox();
+      var rangeBucket = Math.round(activeJetCameraRange() / 50000);
+      return [b.west.toFixed(2), b.south.toFixed(2), b.east.toFixed(2), b.north.toFixed(2), rangeBucket, desiredJetBalloonCount()].join(':');
+    }
+
+    function jetHash01(seed) {
+      var h = 2166136261;
+      var s = String(seed || '');
+      for (var i = 0; i < s.length; i += 1) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      h += h << 13; h ^= h >>> 7; h += h << 3; h ^= h >>> 17; h += h << 5;
+      return ((h >>> 0) % 1000000) / 1000000;
+    }
+
+    function pointInsideJetBbox(lat, lng, pad) {
+      var b = activeJetViewportBbox();
+      var p = Number(pad) || 0;
+      return Number(lat) >= b.south - p && Number(lat) <= b.north + p && Number(lng) >= b.west - p && Number(lng) <= b.east + p;
+    }
+
+    function jetGridPoint(index, total) {
+      var b = activeJetViewportBbox();
+      var n = Math.max(1, Number(total) || desiredJetBalloonCount());
+      var cols = Math.max(1, Math.ceil(Math.sqrt(n)));
+      var rows = Math.max(1, Math.ceil(n / cols));
+      var c = index % cols;
+      var r = Math.floor(index / cols);
+      var cellW = 1 / cols;
+      var cellH = 1 / rows;
+      // Randomize within each viewport cell, deterministically per viewport signature
+      // and balloon index.  This keeps coverage across the bbox while avoiding
+      // a visibly artificial row/column grid.
+      var seed = jetViewportSignature() + ':' + index + ':' + n;
+      var jx = (jetHash01(seed + ':x') - 0.5) * 0.72;
+      var jy = (jetHash01(seed + ':y') - 0.5) * 0.72;
+      var fx = Math.max(0.04, Math.min(0.96, (c + 0.5 + jx) * cellW));
+      var fy = Math.max(0.04, Math.min(0.96, (r + 0.5 + jy) * cellH));
+      return {
+        lat: b.south + ((b.north - b.south) * fy),
+        lng: b.west + ((b.east - b.west) * fx),
+      };
+    }
+
+    function to2DGrid(value) {
+      if (!Array.isArray(value) || !Array.isArray(value[0])) return null;
+      return Array.isArray(value[0][0]) ? value[0] : value;
+    }
+
+    function gridValueAt(arr, yi, xi) {
+      var row = arr[yi];
+      return Number(row && row[xi]);
+    }
+
+    function bilinearSample(arr, bbox, lat, lng) {
+      if (!bbox || !Array.isArray(arr) || !Array.isArray(arr[0])) return NaN;
+      var ny = arr.length;
+      var nx = Array.isArray(arr[0]) ? arr[0].length : 0;
+      if (!ny || !nx) return NaN;
+      var west = Number(bbox[0]);
+      var south = Number(bbox[1]);
+      var east = Number(bbox[2]);
+      var north = Number(bbox[3]);
+      var spanX = (east - west) || 1;
+      var spanY = (north - south) || 1;
+      var wrappedLng = wrapLongitude(lng);
+      if (wrappedLng < west) wrappedLng += 360;
+      if (wrappedLng > east) wrappedLng -= 360;
+      var x = ((wrappedLng - west) / spanX) * Math.max(0, nx - 1);
+      var y = ((lat - south) / spanY) * Math.max(0, ny - 1);
+      x = Math.max(0, Math.min(nx - 1, x));
+      y = Math.max(0, Math.min(ny - 1, y));
+      var x0 = Math.floor(x);
+      var y0 = Math.floor(y);
+      var x1 = Math.min(nx - 1, x0 + 1);
+      var y1 = Math.min(ny - 1, y0 + 1);
+      var tx = x - x0;
+      var ty = y - y0;
+      var q11 = gridValueAt(arr, y0, x0);
+      var q21 = gridValueAt(arr, y0, x1);
+      var q12 = gridValueAt(arr, y1, x0);
+      var q22 = gridValueAt(arr, y1, x1);
+      if (![q11, q21, q12, q22].every(Number.isFinite)) return NaN;
+      var a = q11 * (1 - tx) + q21 * tx;
+      var b = q12 * (1 - tx) + q22 * tx;
+      return a * (1 - ty) + b * ty;
+    }
+
+    function angularLonDelta(a, b) {
+      var d = wrapLongitude(Number(a) - Number(b));
+      return d;
+    }
+
+    function sampleJetVectorField(lat, lng) {
+      var state = window.__gfsGlobalJetWind || {};
+      var vectors = Array.isArray(state.vectors) ? state.vectors : [];
+      if (!vectors.length) return null;
+      var ranked = [];
+      for (var i = 0; i < vectors.length; i += 1) {
+        var v = vectors[i] || {};
+        var vLat = Number(v.lat);
+        var vLon = Number(v.lon ?? v.lng);
+        var u = Number(v.u);
+        var vv = Number(v.v);
+        if ((!Number.isFinite(u) || !Number.isFinite(vv)) && Number.isFinite(Number(v.mph)) && Number.isFinite(Number(v.direction_deg ?? v.directionDeg))) {
+          var _rad = (Number(v.direction_deg ?? v.directionDeg) * Math.PI) / 180;
+          var _mps = Number(v.mph) * 0.44704;
+          u = Math.sin(_rad) * _mps;
+          vv = Math.cos(_rad) * _mps;
+        }
+        if (!Number.isFinite(vLat) || !Number.isFinite(vLon) || !Number.isFinite(u) || !Number.isFinite(vv)) continue;
+        var dx = angularLonDelta(lng, vLon) * Math.max(0.18, Math.cos((lat * Math.PI) / 180));
+        var dy = Number(lat) - vLat;
+        ranked.push({ d2: (dx * dx) + (dy * dy), u: u, v: vv, lat: vLat, lon: vLon, sourceLevel: v.source_level || v.sourceLevel || null });
+      }
+      if (!ranked.length) return null;
+      ranked.sort(function (a, b) { return a.d2 - b.d2; });
+      var take = ranked.slice(0, Math.min(4, ranked.length));
+      var sumW = 0, sumU = 0, sumV = 0;
+      take.forEach(function (r) {
+        var w = 1 / Math.max(0.001, r.d2);
+        sumW += w;
+        sumU += r.u * w;
+        sumV += r.v * w;
+      });
+      if (!sumW) return null;
+      var uMean = sumU / sumW;
+      var vMean = sumV / sumW;
+      var speedMps = Math.hypot(uMean, vMean);
+      return {
+        mph: speedMps * 2.23694,
+        directionDeg: ((Math.atan2(uMean, vMean) * 180 / Math.PI) + 360) % 360,
+        u: uMean,
+        v: vMean,
+        source: 'gfs_isobaric_vector_idw',
+        sourceLevel: take[0] && take[0].sourceLevel,
+      };
+    }
+
+    function analyticJetWind(lat, lng, nowSec) {
+      // Cheap visual-only jetstream: no provider fetch, no GFS/cfgrib wake-up.
+      var la = clampLatitude(lat);
+      var lo = wrapLongitude(lng);
+      var t = Number(nowSec || 0);
+      var northBand = Math.exp(-Math.pow((la - 43) / 18, 2));
+      var southBand = Math.exp(-Math.pow((la + 43) / 18, 2));
+      var band = Math.max(northBand, southBand, 0.10);
+      var wave = Math.sin((lo * Math.PI / 60) + (t * 0.012)) * 0.18 + Math.cos((la * Math.PI / 35) - (t * 0.008)) * 0.10;
+      var mph = Math.max(28, Math.min(185, 42 + (118 * band) + (28 * wave)));
+      var directionDeg = (la >= 0 ? 82 : 92) + (wave * 18);
+      var speedMps = mph / 2.23694;
+      var rad = directionDeg * Math.PI / 180;
+      return {
+        mph: mph,
+        directionDeg: (directionDeg + 360) % 360,
+        u: Math.sin(rad) * speedMps,
+        v: Math.cos(rad) * speedMps,
+        source: 'cheap_analytic_jet_visual',
+        sourceLevel: 'visual_only_no_backend_fetch'
+      };
+    }
+
+    function sampleGlobalJetWind(lat, lng) {
+      var vectorSample = sampleJetVectorField(lat, lng);
+      if (vectorSample) return vectorSample;
+      var state = window.__gfsGlobalJetWind || {};
+      var bbox = state.bbox;
+      var windU = to2DGrid(state.windU);
+      var windV = to2DGrid(state.windV);
+      if (bbox && windU && windV) {
+        var u = bilinearSample(windU, bbox, lat, lng);
+        var v = bilinearSample(windV, bbox, lat, lng);
+        if (Number.isFinite(u) && Number.isFinite(v)) {
+          var speedMps = Math.hypot(u, v);
+          var mph = speedMps * 2.23694;
+          var directionDeg = ((Math.atan2(u, v) * 180 / Math.PI) + 360) % 360;
+          return { mph: mph, directionDeg: directionDeg, u: u, v: v, source: 'cached_gfs_global_uv' };
+        }
+      }
+      return JETSTREAM_VISUAL_FALLBACK_ALLOWED ? analyticJetWind(lat, lng, performance.now ? performance.now() * 0.001 : Date.now() * 0.001) : null;
+    }
+
+    function currentJetWind(lat, lng, nowSec) {
+      var sampled = sampleGlobalJetWind(lat, lng);
+      if (sampled) return sampled;
+      return null;
+    }
+
+    function buildJetOrbTemplate(mph, directionDeg) {
+      var color = getWindColor(Number(mph) || 0);
+      var textColor = jetTextColor(color);
+      var uid = 'jet-' + Math.random().toString(36).slice(2, 10);
+      var gradientId = uid + '-grad';
+      var glowId = uid + '-glow';
+      var speedText = String(Math.round(Number(mph) || 0));
+      var direction = Number(directionDeg) || 0;
+      var template = document.createElement('template');
+      template.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" aria-hidden="true">
+          <defs>
+            <radialGradient id="${gradientId}" cx="50%" cy="45%" r="60%">
+              <stop offset="0%" stop-color="#ffffff" stop-opacity="0.96" />
+              <stop offset="35%" stop-color="${color}" stop-opacity="0.96" />
+              <stop offset="100%" stop-color="#001122" stop-opacity="0.58" />
+            </radialGradient>
+            <filter id="${glowId}" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2.4" result="blur"/>
+              <feMerge>
+                <feMergeNode in="blur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
+          <circle cx="32" cy="32" r="18" fill="url(#${gradientId})" filter="url(#${glowId})" />
+          <circle cx="26" cy="25" r="6" fill="#ffffff" fill-opacity="0.18" />
+          <text x="32" y="34" text-anchor="middle" font-size="12" font-weight="700" fill="${textColor}">${speedText}</text>
+          <text x="32" y="45" text-anchor="middle" font-size="7" font-weight="700" fill="${textColor}" fill-opacity="0.88">mph</text>
+          <g transform="rotate(${direction},32,32)">
+            <polygon points="32,8 38,20 26,20" fill="#ffffff" fill-opacity="0.96" />
+          </g>
+        </svg>`;
+      return template;
+    }
+
+    function jetstreamEnabled() {
+      return !(window.__gfsLayerState && window.__gfsLayerState.jetstreamBalloons === false) && window.__gfsJetstreamDisabled !== true;
+    }
+
+    function removeJetMarker(item) {
+      if (!item || !item.marker) return;
+      try { item.marker.remove(); } catch (_) {}
+    }
+
+    function removeAllJetstreamDomMarkers() {
+      document.querySelectorAll('[data-gfs-layer="jetstream"]').forEach(function (node) {
+        try { node.remove(); } catch (_) {}
+      });
+    }
+
+    function clearJetBalloons() {
+      var state = window.__gfsJetOrbState;
+      if (state && state.rafId) {
+        try { cancelAnimationFrame(state.rafId); } catch (_) {}
+      }
+      (state && state.items || []).forEach(removeJetMarker);
+      removeAllJetstreamDomMarkers();
+      window.__gfsJetOrbMarkers = [];
+      window.__gfsJetOrbState = { items: [], rafId: 0, lastTs: 0, active: false, initialized: false, visible: jetstreamEnabled() };
+    }
+    window.clearJetBalloons = clearJetBalloons;
+
+    function pauseJetBalloons() {
+      var state = window.__gfsJetOrbState;
+      if (!state) return;
+      state.active = false;
+      if (state.rafId) {
+        try { cancelAnimationFrame(state.rafId); } catch (_) {}
+        state.rafId = 0;
+      }
+    }
+    window.pauseJetBalloons = pauseJetBalloons;
+
+    function syncJetBalloonPill() {
+      var pill = document.getElementById('jetstreamBalloonsPill');
+      if (!pill) return;
+      var enabled = !(window.__gfsLayerState && window.__gfsLayerState.jetstreamBalloons === false);
+      pill.classList.toggle('active', enabled);
+      pill.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    }
+
+
+    var jetDrawPending = null;
+    var jetFirstEnableAt = 0;
+
+    async function ensureGlobalJetWindField(forceRefresh) {
+      window.__gfsGlobalJetWindField = window.__gfsGlobalJetWindField || { fetchedAt: 0, ready: false };
+      var fieldState = window.__gfsGlobalJetWindField;
+      var windState = window.__gfsGlobalJetWind = window.__gfsGlobalJetWind || { fetchedAt: 0, pending: null, bbox: null, windU: null, windV: null, vectors: null, validTime: null, source: null, quality: null, error: null };
+      var now = Date.now();
+      var hasVectors = Array.isArray(windState.vectors) && windState.vectors.length;
+      var hasGrid = !!(windState.windU && windState.windV);
+      if ((hasVectors || hasGrid) && !forceRefresh && (now - Number(windState.fetchedAt || 0)) < GLOBAL_JET_FETCH_TTL_MS) {
+        fieldState.fetchedAt = windState.fetchedAt || now;
+        fieldState.ready = true;
+        fieldState.source = hasVectors ? 'real_cached_scene_cache_jet_orbs' : 'real_cached_scene_cache_uv_grid';
+        fieldState.quality = { ok: true, source: fieldState.source, mode: 'cached_real_gfs', fallback_used: false, mock: false, proxy: false };
+        return fieldState;
+      }
+      if (windState.pending) return windState.pending;
+
+      var liveBbox = activeJetBboxString();
+      var fetchBbox = activeJetFetchBboxString();
+      var tier = (window.__gfsBboxContract && window.__gfsBboxContract.scene_tier) || 'world';
+      var scene = 'visible_bbox=' + encodeURIComponent(liveBbox) + '&scene_tier=' + encodeURIComponent(tier);
+      var cacheUrl = '/gfs/api/scene-cache?bbox=' + encodeURIComponent(fetchBbox) + '&' + scene + '&layers=jetstream&mode=fast&fast=1&refresh=0&reason=jetstream_real_cache_first';
+      var refreshUrl = '/gfs/api/cache/refresh?bbox=' + encodeURIComponent(fetchBbox) + '&' + scene + '&layers=jetstream&reason=jetstream_real_background_refresh';
+
+      var ac = new AbortController();
+      var timer = setTimeout(function () { try { ac.abort(); } catch (_) {} }, 2800);
+      windState.pending = fetch(cacheUrl, { cache: 'no-store', signal: ac.signal })
+        .then(function (res) {
+          if (!res.ok) throw new Error('jetstream_scene_cache_http_' + res.status);
+          return res.json();
+        })
+        .then(function (payload) {
+          var layer = payload && payload.layers && (payload.layers.jetstream || payload.layers['jetstream']) || payload || {};
+          var fields = layer && layer.fields ? layer.fields : (payload && payload.fields ? payload.fields : {});
+          var bbox = layer && layer.bbox ? layer.bbox : (payload && payload.bbox ? payload.bbox : String(liveBbox || GLOBAL_JET_FETCH_BBOX).split(',').map(Number));
+          var vectors = Array.isArray(layer && layer.jet_orbs) ? layer.jet_orbs : (Array.isArray(layer && layer.items) ? layer.items : (Array.isArray(payload && payload.jet_orbs) ? payload.jet_orbs : []));
+          var windU = fields.wind_u || fields.u || null;
+          var windV = fields.wind_v || fields.v || null;
+          if (!vectors.length && (!windU || !windV)) {
+            try { fetch(refreshUrl, { cache: 'no-store' }).catch(function(){}); } catch (_) {}
+            throw new Error('jetstream_real_vectors_missing_background_refresh_started');
+          }
+          windState.bbox = bbox;
+          windState.vectors = vectors.length ? vectors : null;
+          windState.windU = vectors.length ? null : windU;
+          windState.windV = vectors.length ? null : windV;
+          windState.validTime = layer.valid_time || layer.validTime || payload.valid_time || payload.validTime || null;
+          windState.source = vectors.length ? (layer.source || 'real_gfs_uv_direction_scene_cache') : 'real_gfs_uv_grid_scene_cache';
+          windState.quality = layer.jetstream || payload.jetstream || { ok: true, source: windState.source, count: vectors.length, fallback_used: false, mock: false, proxy: false };
+          windState.error = null;
+          windState.fetchedAt = Date.now();
+          fieldState.fetchedAt = windState.fetchedAt;
+          fieldState.ready = true;
+          fieldState.source = windState.source;
+          fieldState.quality = windState.quality;
+          console.info('[gfs jetstream] real field ready', { bbox: bbox, visibleBbox: liveBbox, fetchBbox: fetchBbox, validTime: windState.validTime, source: windState.source, vectors: vectors.length });
+          return fieldState;
+        })
+        .catch(function (err) {
+          windState.error = err && err.message ? err.message : String(err);
+          fieldState.ready = false;
+          fieldState.source = 'jetstream_real_data_pending';
+          fieldState.quality = { ok: false, source: fieldState.source, error: windState.error, fallback_used: false, mock: false, proxy: false };
+          if (JETSTREAM_VISUAL_FALLBACK_ALLOWED) {
+            windState.source = 'fallback_analytic_jet_visual_explicit';
+            fieldState.ready = true;
+            fieldState.source = windState.source;
+            fieldState.quality = { ok: true, source: windState.source, fallback_used: true, mock: false, proxy: false };
+            return fieldState;
+          }
+          throw err;
+        })
+        .finally(function () {
+          clearTimeout(timer);
+          windState.pending = null;
+        });
+      return windState.pending;
+    }
+    window.ensureGlobalJetWindField = ensureGlobalJetWindField;
+
+    function setJetBalloonsVisible(visible) {
+      var state = window.__gfsJetOrbState;
+      if (!state) return;
+      state.visible = visible !== false && jetstreamEnabled();
+      (state.items || []).forEach(function (item) { setJetMarkerVisibility(item, state.visible); });
+    }
+
+    async function setJetBalloonsEnabled(enabled) {
+      var on = enabled !== false;
+      window.__gfsLayerUserPrefs = window.__gfsLayerUserPrefs || {};
+      if (on && window.__gfsLayerUserPrefs.jetstream === false) {
+        window.__gfsLayerState.jetstreamBalloons = false;
+        window.__gfsJetstreamDisabled = true;
+        pauseJetBalloons();
+        clearJetBalloons();
+        syncJetBalloonPill();
+        console.info('[gfs jetstream] enable skipped: user disabled pill');
+        return;
+      }
+      window.__gfsLayerState.jetstreamBalloons = on;
+      window.__gfsJetstreamDisabled = !on;
+      window.__gfsJetstreamPillOn = on;
+      syncJetBalloonPill();
+      if (!on) {
+        // Hard off: remove existing markers and cancel animation. Do not merely
+        // hide markers because gmp-marker-3d can keep rendered scene objects alive.
+        pauseJetBalloons();
+        clearJetBalloons();
+        syncJetBalloonPill();
+        console.info('[gfs jetstream] pill disabled: balloons cleared');
+        return;
+      }
+      var state = window.__gfsJetOrbState;
+      if (state && state.initialized && state.items && state.items.length) {
+        await ensureJetBalloonsActive();
+      } else {
+        if (!jetFirstEnableAt) jetFirstEnableAt = Date.now();
+        if (jetDrawPending) await jetDrawPending;
+        else {
+          jetDrawPending = ensureJetBalloonsActive().finally(function () { jetDrawPending = null; });
+          await jetDrawPending;
+        }
+      }
+      setJetBalloonsVisible(true);
+      syncJetBalloonPill();
+      console.info('[gfs jetstream] pill enabled: balloons active');
+    }
+    window.setJetBalloonsEnabled = setJetBalloonsEnabled;
+
+    async function ensureJetBalloonsActive() {
+      var state = window.__gfsJetOrbState;
+      if (!jetstreamEnabled()) {
+        pauseJetBalloons();
+        clearJetBalloons();
+        return;
+      }
+      if (!state || !state.initialized || !state.items.length) {
+        await window.drawJetBalloons();
+        return;
+      }
+      setJetBalloonsVisible(true);
+      if (!state.active) {
+        state.active = true;
+        state.lastTs = 0;
+        state.rafId = requestAnimationFrame(animateJetBalloons);
+      }
+    }
+    window.ensureJetBalloonsActive = ensureJetBalloonsActive;
+
+    function syncJetMarkerVisual(item) {
+      if (!item || !item.marker) return;
+      var bucket = Math.round((Number(item.mph) || 0) / 10) * 10;
+      var dirBucket = Math.round((Number(item.directionDeg) || 0) / 20) * 20;
+      var sig = bucket + ':' + dirBucket;
+      if (item.visualSig !== sig) {
+        while (item.marker.firstChild) item.marker.removeChild(item.marker.firstChild);
+        item.marker.append(buildJetOrbTemplate(item.mph, item.directionDeg));
+        item.visualSig = sig;
+      }
+      item.marker.position = { lat: item.lat, lng: item.lng, altitude: item.altitude };
+      item.marker.style.display = (window.__gfsLayerState && window.__gfsLayerState.jetstreamBalloons === false) ? 'none' : '';
+    }
+
+    function setJetMarkerVisibility(item, visible) {
+      if (!item || !item.marker) return;
+      item.marker.style.display = visible ? '' : 'none';
+    }
+
+    function normalizedJetVectorAt(index, total) {
+      var state = window.__gfsGlobalJetWind || {};
+      var targetTotal = Math.max(1, Number(total) || desiredJetBalloonCount());
+
+      // Placement is viewport-grid based, not vector-row based.  The old code
+      // chose source vector coordinates directly; when the GFS vector payload
+      // contained repeated/same-cell points, all 20 balloons stacked at one lat/lng.
+      // Now every balloon gets a unique viewport cell position, then samples the
+      // nearest/bilinear live GFS wind at that position.
+      var pt = jetGridPoint(Number(index) || 0, targetTotal);
+      var sample = currentJetWind(pt.lat, pt.lng, performance.now ? performance.now() * 0.001 : Date.now() * 0.001);
+      if (!sample) return null;
+      var u = Number(sample.u) || 0;
+      var vv = Number(sample.v) || 0;
+      return {
+        lat: clampLatitude(pt.lat),
+        lng: wrapLongitude(pt.lng),
+        u: u,
+        v: vv,
+        mph: Number(sample.mph) || Math.hypot(u, vv) * 2.23694,
+        directionDeg: Number.isFinite(Number(sample.directionDeg)) ? Number(sample.directionDeg) : ((Math.atan2(u, vv) * 180 / Math.PI) + 360) % 360,
+        source: sample.source || state.source || 'gfs_live_viewport_grid_sample_distributed',
+        sourceLevel: sample.sourceLevel || null,
+      };
+    }
+
+    function createJetOrb(lat, lng, mph, alt, directionDeg) {
+      if (!jetstreamEnabled()) return null;
+      var safeLat = Number(lat);
+      var safeLng = Number(lng);
+      if (!Number.isFinite(safeLat) || !Number.isFinite(safeLng)) {
+        console.warn('[gfs jetstream] skipped invalid marker position', { lat: lat, lng: lng });
+        return null;
+      }
+      var globe = document.getElementById('globe');
+      if (!globe) return null;
+      var maps3d = window.google && window.google.maps && window.google.maps.maps3d;
+      if (!maps3d) return null;
+
+      var marker = document.createElement('gmp-marker-3d');
+      marker.position = { lat: safeLat, lng: safeLng, altitude: Number(alt) || JET_ORB_ALTITUDE_M };
+      marker.drawsWhenOccluded = true;
+      marker.sizePreserved = true;
+      if (maps3d.AltitudeMode) marker.altitudeMode = maps3d.AltitudeMode.ABSOLUTE;
+      if (maps3d.CollisionBehavior) {
+        marker.collisionBehavior = maps3d.CollisionBehavior.REQUIRED;
+      }
+
+      marker.append(buildJetOrbTemplate(mph, directionDeg));
+      marker.title = Math.round(Number(mph) || 0) + ' mph visual jet @ ~10,000 ft';
+      marker.setAttribute('data-gfs-layer', 'jetstream');
+      marker.setAttribute('data-jetstream-balloon', 'true');
+      marker.setAttribute('data-jetstream-speed-mph', String(Math.round(Number(mph) || 0)));
+      marker.setAttribute('data-jetstream-source', (window.__gfsGlobalJetWind && window.__gfsGlobalJetWind.source) || 'unknown');
+      globe.append(marker);
+      window.__gfsJetMarkerLogCount = (window.__gfsJetMarkerLogCount || 0) + 1;
+      if (window.__gfsJetMarkerLogCount <= 8 || (window.__gfsJetMarkerLogCount % 500) === 0) {
+        console.debug('[gfs jetstream] marker created', { count: window.__gfsJetMarkerLogCount, lat: Number(lat), lng: Number(lng), speedMph: Number(mph) || 0, directionDeg: Number(directionDeg) || 0 });
+      }
+      return marker;
+    }
+
+    function spawnJetBalloon(index, total) {
+      if (!jetstreamEnabled()) return null;
+      var wind = normalizedJetVectorAt(Number(index) || 0, total || desiredJetBalloonCount());
+      if (!wind) return null;
+      var lat = wind.lat;
+      var lng = wind.lng;
+      var marker = createJetOrb(lat, lng, wind.mph, JET_ORB_ALTITUDE_M, wind.directionDeg);
+      if (!marker) return null;
+      return {
+        marker: marker,
+        lat: lat,
+        lng: lng,
+        altitude: JET_ORB_ALTITUDE_M,
+        mph: wind.mph,
+        directionDeg: wind.directionDeg,
+        source: wind.source || 'gfs_live_vector',
+        sourceLevel: wind.sourceLevel || null,
+        u: Number(wind.u) || 0,
+        v: Number(wind.v) || 0,
+        ageSec: 0,
+        maxAgeSec: 900,
+        nextRetargetSec: 45,
+      };
+    }
+
+    function advanceJetBalloon(item, dtSec, nowSec) {
+      item.ageSec += dtSec;
+      item.nextRetargetSec -= dtSec;
+      var visualDirty = false;
+      if (item.nextRetargetSec <= 0) {
+        var target = currentJetWind(item.lat, item.lng, nowSec);
+        if (!target) {
+          target = { u: item.u, v: item.v, directionDeg: item.directionDeg, mph: item.mph, source: item.source || 'last_known_live_vector' };
+        }
+        item.u = (item.u * 0.7) + ((Number(target.u) || 0) * 0.3);
+        item.v = (item.v * 0.7) + ((Number(target.v) || 0) * 0.3);
+        var speedMps = Math.hypot(item.u, item.v);
+        item.mph = speedMps * 2.23694;
+        item.directionDeg = ((Math.atan2(item.u, item.v) * 180 / Math.PI) + 360) % 360;
+        item.nextRetargetSec = 35 + (Math.random() * 35);
+        visualDirty = true;
+      }
+      item.lat += item.v * dtSec * 0.35 / 111320;
+      var lonScale = Math.max(0.2, Math.cos((item.lat * Math.PI) / 180));
+      item.lng += item.u * dtSec * 0.35 / (111320 * lonScale);
+      item.lat = clampLatitude(item.lat);
+      item.lng = wrapLongitude(item.lng);
+      item.marker.position = { lat: item.lat, lng: item.lng, altitude: item.altitude };
+      if (visualDirty) syncJetMarkerVisual(item);
+      return item.ageSec < item.maxAgeSec && Math.abs(item.lat) < 71.5;
+    }
+
+    function animateJetBalloons(ts) {
+      var state = window.__gfsJetOrbState;
+      if (!jetstreamEnabled()) { pauseJetBalloons(); clearJetBalloons(); return; }
+      if (!state || !state.active) return;
+      if (!state.lastTs) state.lastTs = ts;
+      var elapsedMs = ts - state.lastTs;
+      if (elapsedMs < (1000 / JET_UPDATE_TARGET_FPS)) {
+        state.rafId = requestAnimationFrame(animateJetBalloons);
+        return;
+      }
+      var dtSec = Math.min(0.08, Math.max(0.002, elapsedMs * 0.001));
+      state.lastTs = ts;
+      var nowSec = ts * 0.001;
+      var nextItems = [];
+      for (var i = 0; i < state.items.length; i += 1) {
+        var item = state.items[i];
+        if (item && advanceJetBalloon(item, dtSec, nowSec)) {
+          nextItems.push(item);
+        } else {
+          removeJetMarker(item);
+          var replacement = spawnJetBalloon(i, state.targetCount || desiredJetBalloonCount());
+          if (replacement) nextItems.push(replacement);
+        }
+      }
+      state.items = nextItems;
+      window.__gfsJetOrbMarkers = state.items.map(function (it) { return it.marker; });
+      state.rafId = requestAnimationFrame(animateJetBalloons);
+    }
+
+    window.drawJetBalloons = async function drawJetBalloons(forceRedraw) {
+      if (!jetstreamEnabled()) { clearJetBalloons(); return; }
+      var signature = jetViewportSignature();
+      var targetCount = desiredJetBalloonCount();
+      var existing = window.__gfsJetOrbState;
+      if (!forceRedraw && existing && existing.initialized && existing.items && existing.items.length && existing.signature === signature && existing.targetCount === targetCount) {
+        existing.active = true;
+        if (!existing.rafId) existing.rafId = requestAnimationFrame(animateJetBalloons);
+        setJetBalloonsVisible(true);
+        return;
+      }
+      try { await ensureGlobalJetWindField(Boolean(window.__gfsGlobalJetWind && window.__gfsGlobalJetWind.error)); } catch (err) { console.info('[gfs jetstream] waiting for real data', { message: err?.message || String(err) }); return; }
+      if (!jetstreamEnabled()) { clearJetBalloons(); return; }
+      clearJetBalloons();
+      var state = window.__gfsJetOrbState;
+      state.active = true;
+      state.initialized = true;
+      state.signature = signature;
+      state.targetCount = targetCount;
+      for (var i = 0; i < targetCount; i += 1) {
+        var balloon = spawnJetBalloon(i, targetCount);
+        if (balloon) state.items.push(balloon);
+      }
+      if (!state.items.length) {
+        state.active = false;
+        state.initialized = false;
+        console.warn('[gfs jetstream] no balloons drawn: live vectors unavailable', window.__gfsGlobalJetWind && window.__gfsGlobalJetWind.error);
+        syncJetBalloonPill();
+        return;
+      }
+      window.__gfsJetOrbMarkers = state.items.map(function (it) { return it.marker; });
+      setJetBalloonsVisible(jetstreamEnabled());
+      syncJetBalloonPill();
+      console.debug('[gfs jetstream] markers rendered', { count: state.items.length, targetCount: targetCount, viewportBbox: activeJetBboxString(), fetchBbox: activeJetFetchBboxString(), range: Math.round(activeJetCameraRange()), mode: 'viewport_scoped_live_gfs_balloons', altitudeM: JET_ORB_ALTITUDE_M, source: window.__gfsGlobalJetWind && window.__gfsGlobalJetWind.source, quality: window.__gfsGlobalJetWind && window.__gfsGlobalJetWind.quality });
+      if (jetstreamEnabled()) {
+        state.rafId = requestAnimationFrame(animateJetBalloons);
+      }
+      // Cheap mode: no timed backend refresh. Existing cached GFS vectors may be used if already hydrated, but balloons never wake GFS by themselves.
+    };
+
+    window.refreshJetBalloonsForViewport = async function refreshJetBalloonsForViewport(reason) {
+      if (!jetstreamEnabled()) { clearJetBalloons(); return; }
+      var state = window.__gfsJetOrbState || {};
+      var signature = jetViewportSignature();
+      var targetCount = desiredJetBalloonCount();
+      var now = Date.now();
+      if (state.initialized && state.items && state.items.length) {
+        if (state.signature === signature && state.targetCount === targetCount) return;
+        if (state.lastViewportRefreshAt && (now - state.lastViewportRefreshAt) < 45000) {
+          setJetBalloonsVisible(true);
+          return;
+        }
+      }
+      state.lastViewportRefreshAt = now;
+      console.info('[gfs jetstream] cheap viewport refresh', { reason: reason || 'viewport', targetCount: targetCount, bbox: activeJetBboxString(), range: Math.round(activeJetCameraRange()), mode: 'client_only_no_backend_fetch' });
+      return window.drawJetBalloons(true);
+    };
+
+    // Jetstream pill ownership is centralized in static/js/gfs/main.js.
+    // Do not bind a second duplicate dblclick toggle here; that used to turn the
+    // balloons off and immediately back on during the same user gesture.
+    syncJetBalloonPill();
+  </script>
+
+  <script type="module" src="/static/js/gfs/main.js?v=20260607-cloud-unified-shell1"></script>
+</body>
+</html>

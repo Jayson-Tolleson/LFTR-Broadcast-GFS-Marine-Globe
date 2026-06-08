@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Status Dashboard</title>
+  <style>
+    body{margin:0;font-family:Arial,sans-serif;background:#0b1220;color:#e8eefc}
+    .wrap{padding:14px}
+    pre{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:10px;white-space:pre-wrap}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2>System Status</h2>
+    <pre id="out">Loading...</pre>
+  </div>
+  <script>
+    Promise.all([
+      fetch('/webrtc/ice-config').then(r=>r.json()).catch(()=>({error:'ice unavailable'})),
+      fetch('/gfs/api/health').then(r=>r.json()).catch(()=>({error:'gfs unavailable'}))
+    ]).then(([ice,gfs])=>{
+      document.getElementById('out').textContent = JSON.stringify({ice,gfs,ts:Date.now()}, null, 2);
+    });
+  </script>
+</body>
+</html>

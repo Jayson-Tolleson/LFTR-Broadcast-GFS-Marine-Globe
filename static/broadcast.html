@@ -1,0 +1,106 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Broadcast</title>
+<link rel="stylesheet" href="/static/css.css">
+<style>
+:root{--bg:#07090f;--pane:#12151fbb;--line:#2f3649;--text:#e8eefc;--muted:#a7b0c8;--accent:#7dd3fc}
+body{margin:0;background:radial-gradient(circle at 20% 10%,#1b2030 0,#07090f 40%,#04050a 100%);color:var(--text);font-family:Inter,Arial,sans-serif}
+.app{display:grid;grid-template-rows:auto 1fr;height:100vh}
+.hdr{display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid #1f2434;background:#090d16f2;backdrop-filter:blur(10px);overflow:auto}
+.badge{display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid #30384e;border-radius:999px;background:#121a2cdd;font-size:12px}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:12px;padding:12px;min-height:0}
+.glass{background:var(--pane);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 26px #0007, inset 0 1px 0 #fff1;backdrop-filter:blur(10px)}
+.videoWrap{padding:10px}.stage{background:#000;border:1px solid #000;border-radius:10px;overflow:hidden;min-height:360px}
+video{width:100%;height:100%;object-fit:contain}
+.controlBar{margin-top:10px;padding:10px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-start}
+.btn{padding:8px 12px;border-radius:999px;border:1px solid #3a435c;background:#151c2fee;color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:8px;font-size:12px}
+.btn:hover{border-color:#5f6c91}.btn.active{border-color:var(--accent);box-shadow:0 0 0 1px #0a121e,inset 0 0 24px #1e2f4f}
+.btn.small{padding:7px 10px}
+.tip{font-size:12px;color:var(--muted);padding:0 10px 10px}
+.chat{display:flex;flex-direction:column;min-height:0}
+.chat.collapsed .chatList,.chat.collapsed .searchPane,.chat.collapsed .input,.chat.collapsed .chatTools{display:none}
+.chatHead{padding:10px;border-bottom:1px solid #252d40;display:flex;justify-content:space-between;align-items:center;font-size:13px}
+.chatTools{display:flex;gap:8px;padding:8px;border-bottom:1px solid #252d40;flex-wrap:wrap}
+.chatList{flex:1;overflow:auto;padding:10px}
+.entry{padding:8px;border:1px solid #2c3958;border-radius:10px;margin-bottom:8px;background:#0d1423}
+.entry.stt{border-color:#60a5fa}
+.input{display:flex;gap:6px;padding:8px;border-top:1px solid #27324a;align-items:flex-end}
+textarea{flex:1;min-height:58px;max-height:140px;background:#0b1220;color:#eaf1ff;border:1px solid #334161;border-radius:8px;padding:8px}
+.searchPane{display:none;border-top:1px solid #27324a;padding:8px}
+.searchPane.open{display:block}
+.searchResults{display:grid;gap:8px;max-height:220px;overflow:auto}
+.searchItem{padding:8px;border:1px solid #334161;border-radius:10px;background:#0c1422}
+.searchItem a{color:#7dd3fc;text-decoration:none}
+.searchMeta{font-size:11px;color:#a7b0c8}
+
+.chatFrame{width:100%;height:280px;border:1px solid #334161;border-radius:10px;background:#020617;margin-top:8px}
+.chatFrame.imageFrame{height:260px}
+.chatFrameLink{display:inline-block;margin-top:6px;color:#7dd3fc;text-decoration:none;font-size:12px}
+.attachmentMeta{font-size:11px;color:#a7b0c8;margin-top:4px}
+.led{width:10px;height:10px;border-radius:999px;display:inline-block}.r{background:#ef4444}.g{background:#22c55e}.b{background:#3b82f6}.blink{animation:bl 1s linear infinite}@keyframes bl{50%{opacity:.25}}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+@media (max-width: 980px){
+  .main{grid-template-columns:minmax(0,1fr)}
+  .chat{max-height:36vh}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="hdr">
+    <span class="badge"><span id="ledServer" class="led r"></span><span class="mono">SERVER</span><span id="stServer">disconnected</span></span>
+    <span class="badge"><span id="ledRoom" class="led r"></span><span class="mono">ROOM</span><span id="stRoomConn">disconnected</span></span>
+    <span class="badge"><span id="ledLive" class="led r"></span><span class="mono">BROADCAST</span><span id="stLive">offline</span></span>
+    <span class="badge"><span class="mono">Watchers</span><span id="stWatchers">0</span></span>
+    <span class="badge"><span class="mono">WebRTC</span><span id="stPc">new</span></span>
+    <span class="badge"><span class="mono">ICE</span><span id="stIce">new</span></span>
+    <span class="badge"><span class="mono">Room</span><span id="stRoom">default</span></span>
+  </div>
+
+  <div class="main">
+    <div class="glass videoWrap">
+      <div class="stage"><video id="preview" autoplay playsinline muted></video></div>
+      <div class="controlBar">
+        <button id="camBtn" class="btn"><span id="camLed" class="led r"></span><span id="camTxt">CAM: off</span></button>
+        <button id="screenBtn" class="btn"><span id="screenLed" class="led r"></span><span id="screenTxt">SCREEN: off</span></button>
+        <button id="micBtn" class="btn"><span id="micLed" class="led r"></span><span id="micTxt">MIC: off</span></button>
+        <button id="sttBtn" class="btn"><span id="sttLed" class="led r"></span><span id="sttTxt">STT: off</span></button>
+        <button id="aiEnableBtn" class="btn"><span id="aiEnableLed" class="led r"></span><span id="aiEnableTxt">AI: off</span></button>
+        <button id="ttsMonBtn" class="btn"><span id="ttsMonLed" class="led r"></span><span id="ttsMonTxt">AI voice: off</span></button>
+        <button id="ncBtn" class="btn"><span id="ncLed" class="led r"></span><span id="ncTxt">NoiseCancel: off</span></button>
+        <button id="recordBtn" class="btn"><span id="recordLed" class="led r"></span><span id="recordTxt">Record: off</span></button>
+        <button id="rtmpBtn" class="btn"><span id="rtmpLed" class="led r"></span><span id="rtmpTxt">RTMP: off</span></button>
+      </div>
+      <div class="tip">Tip: STT posts transcripts into chat. AI replies once when AI is enabled; AI voice speaks that one reply when enabled. Screen-share ending in browser auto-falls back to camera.</div>
+      <div class="tip" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input id="rtmpKeyInput" placeholder="YouTube stream key (optional)" style="min-width:260px;background:#0b1220;color:#eaf1ff;border:1px solid #334161;border-radius:8px;padding:8px"/>
+        <span class="mono" id="recordingStatus"></span>
+      </div>
+    </div>
+
+    <div class="glass chat">
+      <div class="chatHead"><span>Studio Chat + Search</span><span style="display:flex;gap:8px;align-items:center"><span id="roomStatus"></span><button id="chatCollapseBtn" class="btn small" type="button">Collapse</button></span></div>
+      <div class="chatTools"><button id="searchCloseBtn" class="btn small">Hide Search</button></div>
+      <div id="chat" class="chatList"></div>
+      <div id="searchPane" class="searchPane">
+        <div id="searchResults" class="searchResults"></div>
+      </div>
+      <div class="input">
+        <button id="webBtn" class="btn small" type="button">Web Search</button>
+        <button id="attachBtn" class="btn small" type="button">Attach</button>
+        <input id="file" type="file" accept="image/*,video/*,.pdf,.txt" hidden>
+        <textarea id="chatInput" placeholder="Message"></textarea>
+        <button id="sendBtn" class="btn" type="button">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+window.BROADCAST_CONFIG = { iceConfigUrl:'/webrtc/ice-config', aiWebSearchUrl:'/ai/websearch', role:'broadcast', room:(new URLSearchParams(location.search).get('room')||'default'), debug:true, roomAi:true };
+</script>
+<script src="/static/js/broadcast.js"></script>
+</body>
+</html>

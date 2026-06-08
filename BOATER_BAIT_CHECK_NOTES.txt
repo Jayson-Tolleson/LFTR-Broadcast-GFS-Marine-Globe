@@ -1,0 +1,6 @@
+Boater/Bait check pass
+- HYCOM SST/current had been arriving in journal, but older cache warmers were crashing before boater/bait could use it.
+- This package exposes the shared SST landmask metadata directly on boater and bait payloads for debug visibility.
+- Boater remains strict: GLB boats require live SST/current-backed water cells and use the shared SST landmask/ocean_mask.
+- Bait remains strict: server polygons/scores derive only from the shared SST ocean mask; no client bait fallback unless explicitly debug-enabled.
+- Run: ./scripts/check_boater_bait.sh http://127.0.0.1:8000 -126,28,-114,40

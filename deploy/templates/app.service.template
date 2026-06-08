@@ -1,0 +1,23 @@
+[Unit]
+Description=Broadcast ASGI app
+After=network.target
+
+[Service]
+Type=simple
+User=__APP_USER__
+Group=__APP_GROUP__
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__APP_ENV_FILE__
+Environment=PYTHONUNBUFFERED=1
+Environment=MALLOC_ARENA_MAX=2
+Environment=OMP_NUM_THREADS=1
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=NUMEXPR_NUM_THREADS=1
+ExecStart=/bin/bash -lc 'if [ -x "__APP_DIR__/venv/bin/hypercorn" ]; then exec __APP_DIR__/venv/bin/python -m hypercorn --bind __APP_BIND_HOST__:__APP_BIND_PORT__ --workers __APP_WORKERS__ main:app; else exec python3 -m hypercorn --bind __APP_BIND_HOST__:__APP_BIND_PORT__ --workers __APP_WORKERS__ main:app; fi'
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=20000
+MemoryMax=10G
+
+[Install]
+WantedBy=multi-user.target

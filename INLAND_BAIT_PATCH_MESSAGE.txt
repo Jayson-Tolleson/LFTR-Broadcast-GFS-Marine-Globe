@@ -1,0 +1,19 @@
+LFTR Broadcast GFS inland-bait companion hotfix
+
+Line count:
+Python + JavaScript: 34,564 lines
+Python:             19,953 lines
+JavaScript:         14,611 lines
+Source-ish total:   38,757 lines
+
+Validation:
+zip integrity: PASS after packaging
+Python compile: PASS
+JavaScript syntax check: PASS
+helper script syntax: PASS
+
+Notes:
+- inland_water_temp companion now carries bait_score/targets.
+- main.js merges inland bait companion data without clearing shoreline geometry.
+- inland-water renderer can draw bait-score seed contours before real temp labels arrive.
+- temp labels still require real/usable temperature values.

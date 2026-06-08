@@ -1,0 +1,15 @@
+LFTR Broadcast GFS — final SST landmask/cache clear patch
+
+- HYCOM/OISST finite SST mask is eroded one cell into interior water before being shared downstream.
+- Boats require eroded shared SST landmask + usable current + 8/9 water-neighbor guard.
+- Boat jitter reduced to avoid pushing valid cells onto land.
+- Current/boater marching-square polygons require strict SST-water/current points and smaller interpolation gap.
+- Bait score/polygons use eroded shared SST ocean mask before contour building.
+- Added scripts/clear_gfs_runtime_cache.sh to remove stale scene/provider/HYCOM/bait/boater/inland caches.
+- repair_broadcast_service.sh runs the cache clear by default during install/repair.
+
+
+SERVICE HOLD FIX:
+- run_broadcast_service.sh now supervises Hypercorn in a foreground loop.
+- Unexpected clean Hypercorn exits are restarted by the runner itself.
+- systemd unit uses Restart=always plus KillMode=mixed.

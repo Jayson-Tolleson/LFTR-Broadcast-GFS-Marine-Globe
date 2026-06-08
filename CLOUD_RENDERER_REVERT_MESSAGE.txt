@@ -1,0 +1,7 @@
+Cloud renderer reverted from LFTR-Broadcast-GFS-Marine-Globe-inland-world-coarse-geometry(1)(1).zip
+Restored behavior:
+- static/js/gfs/cloud-zones.js renderer restored from uploaded coarse-geometry zip
+- cloud shell opacity/darkness slider restored to 15..135 percent, default 92%
+- compatibility shim added for newer main.js cloudPayloadHasDrawableContent import
+
+Install to ~/broadcast, restart broadcast, and refresh /gfs.

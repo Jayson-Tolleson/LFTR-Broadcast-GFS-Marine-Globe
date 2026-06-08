@@ -1,0 +1,5 @@
+Inland bait check/fix:
+- inland_water_temp companion now carries inland_bait/bait_score rows in addition to real temp labels.
+- main.js mergeInlandWaterTemp now merges bait companion data without clearing shoreline geometry.
+- inland-water.js accepts bait_score seed points for clipped lake marching-square bait; temp labels remain real-temp only.
+- Added scripts/check_inland_bait.sh.

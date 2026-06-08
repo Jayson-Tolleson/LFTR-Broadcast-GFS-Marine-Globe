@@ -1,0 +1,28 @@
+LFTR Broadcast / GFS - SST Landmask Shared Gate Hotfix
+
+Contract:
+- HYCOM/OISST SST is no longer just a value layer; finite SST is now the shared ocean/land gate.
+- Provider emits ocean_mask with source_meta.sst_landmask diagnostics.
+- SST, current_u, current_v, current_speed, and salinity are masked together.
+- Ocean points, boat placement, shark/SST intelligence, and bait scoring all consume the same shared water mask where available.
+- Bait no longer smears SST across land; neighbor fill is allowed only after the shared ocean mask says the target cell is water.
+
+Expected debug/log signals:
+- source_meta.landmask_contract = finite_sst_is_shared_water_gate_for_sst_currents_bait_boats_shark
+- source_meta.sst_landmask.water_cells > 0
+- bait.meta.sst_landmask_enabled = true
+- bait.meta.land_masked_cells > 0 near coast/land-heavy viewports
+- oceanPoints.mask.method starts with shared_sst_landmask_
+
+Install:
+cd ~
+unzip -o LFTR-Broadcast-GFS-sst-landmask-shared-gate-installer.zip -d ~
+cd ~/broadcast
+sudo bash scripts/repair_broadcast_service.sh
+sudo systemctl restart broadcast
+
+Line count after patch:
+Python + JavaScript: 34,475 lines
+Python:             19,932 lines
+JavaScript:         14,543 lines
+Source-ish total:   38,586 lines
