@@ -14,6 +14,64 @@ class LightningCacheMediaMixin:
         path.mkdir(parents=True, exist_ok=True)
         return path / f"{product}_{safe}.json.gz"
 
+    def _lightning_event_ttl_seconds(self) -> int:
+        return max(30, int(os.getenv("GFS_GLM_FLASH_TTL_SECONDS", "600") or "600"))
+
+    def _glm_event_time_from_path(self, path: Path, fallback: datetime) -> datetime:
+        # NOAA GLM filenames include _sYYYYJJJHHMMSS...; use it so particles
+        # expire by event time rather than by cache write time.
+        try:
+            m = re.search(r"_s(\d{4})(\d{3})(\d{2})(\d{2})(\d{2})", path.name)
+            if m:
+                year, jday, hh, mm, ss = [int(x) for x in m.groups()]
+                base = datetime(year, 1, 1, tzinfo=timezone.utc) + timedelta(days=jday - 1)
+                return base.replace(hour=hh, minute=mm, second=ss, microsecond=0)
+        except Exception:
+            pass
+        return fallback
+
+    def _filter_recent_lightning_payload(self, payload: dict[str, Any], *, cache_age_seconds: float = 0.0, now: datetime | None = None) -> dict[str, Any]:
+        now = now or datetime.now(timezone.utc)
+        ttl = self._lightning_event_ttl_seconds()
+        rows = payload.get("flashes") or payload.get("items") or []
+        kept: list[dict[str, Any]] = []
+        expired = 0
+        for row in rows if isinstance(rows, list) else []:
+            if not isinstance(row, dict):
+                continue
+            try:
+                age = float(row.get("age_seconds") or 0.0) + max(0.0, float(cache_age_seconds or 0.0))
+            except Exception:
+                age = max(0.0, float(cache_age_seconds or 0.0))
+            if age > ttl:
+                expired += 1
+                continue
+            item = dict(row)
+            item["age_seconds"] = round(age, 3)
+            item["event_ttl_seconds"] = ttl
+            item["expires_in_seconds"] = max(0.0, round(ttl - age, 3))
+            kept.append(item)
+        out = dict(payload)
+        out["flashes"] = kept
+        out["items"] = kept
+        out["regions"] = self._cluster_lightning_regions(kept)
+        out["count"] = len(kept)
+        out["event_ttl_seconds"] = ttl
+        out["particle_ttl_seconds"] = ttl
+        out["event_particle_contract"] = "lightning_flashes_are_short_ttl_event_particles_expired_flashes_removed_without_clearing_other_layers"
+        out.setdefault("diagnostics", {})
+        if isinstance(out["diagnostics"], dict):
+            out["diagnostics"].update({
+                "event_ttl_seconds": ttl,
+                "expired_flashes_removed": expired,
+                "flashes_after_ttl_filter": len(kept),
+                "particle_contract": out["event_particle_contract"],
+            })
+        if not kept and rows:
+            out["payload_state"] = "expired_no_recent_lightning"
+            out.setdefault("quality", {})["live_goes_glm"] = False
+        return out
+
     def _read_lightning_cache(self, bbox: dict[str, float] | None = None, ttl_seconds: int = 90) -> dict[str, Any] | None:
         path = self._lightning_cache_path(bbox)
         if not path.exists():
@@ -26,6 +84,7 @@ class LightningCacheMediaMixin:
             with gzip.open(path, "rt", encoding="utf-8") as fh:
                 payload = json.load(fh)
             if isinstance(payload, dict):
+                payload = self._filter_recent_lightning_payload(payload, cache_age_seconds=age)
                 payload.setdefault("cache", {})
                 payload["cache"].update({"hit": True, "age_seconds": round(age, 3), "path": str(path)})
                 payload.setdefault("payload_state", "cache_hit")
@@ -115,6 +174,7 @@ class LightningCacheMediaMixin:
                 log.debug("GOES GLM nc open skipped path=%s err=%s", path, exc)
                 return []
         try:
+            file_event_time = self._glm_event_time_from_path(path, now)
             lat_name = "flash_lat" if "flash_lat" in ds.variables else None
             lon_name = "flash_lon" if "flash_lon" in ds.variables else None
             if not lat_name or not lon_name:
@@ -139,7 +199,7 @@ class LightningCacheMediaMixin:
                     area = float(areas[i]) if areas is not None and areas[i] is not None else None
                     # GLM time variable is seconds relative to dataset epoch; xarray
                     # often decodes it to timedelta64. Keep a safe string if possible.
-                    tstr = None; age = None
+                    tstr = file_event_time.isoformat(); age = max(0.0, (now - file_event_time).total_seconds())
                     try:
                         tv = times[i] if times is not None else None
                         if tv is not None:
@@ -187,6 +247,7 @@ class LightningCacheMediaMixin:
 
     def _lightning_cache_shell(self, visible: dict[str, float], scene: dict[str, Any], minutes: int, reason: str = "queued_background_warm") -> dict[str, Any]:
         now = datetime.now(timezone.utc)
+        event_ttl = self._lightning_event_ttl_seconds()
         return self._attach_scene_plan({
             "ok": True,
             "schema": "lftr_lightning_v1",
@@ -194,6 +255,9 @@ class LightningCacheMediaMixin:
             "payload_state": "warming",
             "mode": "stale_while_revalidate_no_direct_provider_block",
             "valid_window_minutes": minutes,
+            "event_ttl_seconds": event_ttl,
+            "particle_ttl_seconds": event_ttl,
+            "event_particle_contract": "lightning_flashes_are_short_ttl_event_particles_expired_flashes_removed_without_clearing_other_layers",
             "bbox": [visible["west"], visible["south"], visible["east"], visible["north"]],
             "bbox_used": [visible["west"], visible["south"], visible["east"], visible["north"]],
             "flashes": [],
@@ -239,14 +303,14 @@ class LightningCacheMediaMixin:
         ttl = int(os.getenv("GFS_GLM_CACHE_TTL_SECONDS", "180") or "180")
         cached = self._read_lightning_cache(visible, ttl_seconds=ttl)
         if cached:
-            cached["payload_state"] = "cache_hit_live_recent"
+            cached["payload_state"] = "cache_hit_live_recent" if int(cached.get("count") or 0) > 0 else "cache_hit_no_recent_lightning"
             cached["cache"] = {"hit": True, "mode": "fresh_lightning_cache", "ttl_seconds": ttl}
             cached["scene_plan"] = scene
             return cached
         stale = self._read_lightning_cache(visible, ttl_seconds=-1)
         self._schedule_lightning_warm(requested, visible, minutes, scene)
         if stale:
-            stale["payload_state"] = "stale_while_revalidate"
+            stale["payload_state"] = "stale_while_revalidate" if int(stale.get("count") or 0) > 0 else "stale_cache_no_recent_lightning"
             stale["cache"] = {"hit": True, "mode": "stale_while_revalidate", "ttl_seconds": ttl}
             stale["scene_plan"] = scene
             return stale
@@ -259,7 +323,7 @@ class LightningCacheMediaMixin:
         ttl = int(os.getenv("GFS_GLM_CACHE_TTL_SECONDS", "60"))
         cached = self._read_lightning_cache(visible, ttl_seconds=ttl)
         if cached:
-            cached["payload_state"] = "cache_hit_live_recent"
+            cached["payload_state"] = "cache_hit_live_recent" if int(cached.get("count") or 0) > 0 else "cache_hit_no_recent_lightning"
             cached["scene_plan"] = scene
             return cached
         if os.getenv("GFS_DISABLE_GLM", "false").strip().lower() in {"1", "true", "yes", "on"}:
@@ -297,12 +361,17 @@ class LightningCacheMediaMixin:
                 continue
             seen.add(key); unique.append(f)
         unique = unique[: int(os.getenv("GFS_GLM_MAX_FLASHES", "1500"))]
+        event_ttl = self._lightning_event_ttl_seconds()
+        unique = [dict(f, event_ttl_seconds=event_ttl, expires_in_seconds=max(0.0, event_ttl - float(f.get("age_seconds") or 0.0))) for f in unique if float(f.get("age_seconds") or 0.0) <= event_ttl]
         payload = {
             "ok": True,
             "schema": "lftr_lightning_v1",
             "source": "goes_glm_l2_lcfa",
             "payload_state": "live" if unique else "provider_empty",
             "valid_window_minutes": minutes,
+            "event_ttl_seconds": event_ttl,
+            "particle_ttl_seconds": event_ttl,
+            "event_particle_contract": "lightning_flashes_are_short_ttl_event_particles_expired_flashes_removed_without_clearing_other_layers",
             "bbox": [visible["west"], visible["south"], visible["east"], visible["north"]],
             "bbox_used": [visible["west"], visible["south"], visible["east"], visible["north"]],
             "flashes": unique,
@@ -311,7 +380,7 @@ class LightningCacheMediaMixin:
             "count": len(unique),
             "fallback_used": False, "mock": False, "proxy": False,
             "quality": {"live_goes_glm": bool(unique), "fallback_used": False, "mock": False, "proxy": False},
-            "diagnostics": {"providers": diagnostics, "satellites": [p for p, _ in self._goes_glm_s3_bases()], "note": "GOES GLM Level 2 LCFA flash_lat/flash_lon filtered to visible bbox"},
+            "diagnostics": {"providers": diagnostics, "satellites": [p for p, _ in self._goes_glm_s3_bases()], "event_ttl_seconds": event_ttl, "flashes_after_ttl_filter": len(unique), "particle_contract": "short_ttl_event_particles", "note": "GOES GLM Level 2 LCFA flash_lat/flash_lon filtered to visible bbox"},
             "generated_at": now.isoformat(),
         }
         payload = self._attach_scene_plan(payload, scene)

@@ -1,6 +1,8 @@
 import { attachPolygonHover } from './hover_tip.js';
 
 const MAX_LIGHTNING_MARKERS = 240;
+const DEFAULT_LIGHTNING_FLASH_TTL_SECONDS = Number(window.GFS_GLM_FLASH_TTL_SECONDS || 600);
+const LIGHTNING_FADE_OUT_MS = Number(window.GFS_LIGHTNING_FADE_OUT_MS || 2200);
 
 function toNumber(v, fallback = 0) {
   const n = Number(v);
@@ -16,12 +18,18 @@ function normalizeFlashShape(item) {
   const lon = toNumber(item.lon ?? item.lng ?? item.longitude ?? center.lon ?? center.lng, NaN);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   const risk = toNumber(item.energy_j ?? item.energy ?? item.flash_energy ?? item.visual_priority ?? item.severity ?? item.source_fields?.inferred_lightning_risk, 0);
+  const ttl = Math.max(5, toNumber(item.event_ttl_seconds ?? item.particle_ttl_seconds, DEFAULT_LIGHTNING_FLASH_TTL_SECONDS));
+  const age = Math.max(0, toNumber(item.age_seconds, 0));
+  const expiresIn = Math.min(ttl - age, toNumber(item.expires_in_seconds, ttl - age));
+  if (!Number.isFinite(expiresIn) || expiresIn <= 0) return null;
   return {
     ...item,
     lat,
     lon,
     energy_j: Number.isFinite(toNumber(item.energy_j, NaN)) ? item.energy_j : risk,
-    age_seconds: toNumber(item.age_seconds, 0),
+    age_seconds: age,
+    event_ttl_seconds: ttl,
+    expires_in_seconds: expiresIn,
     source: item.source || item.properties?.source || 'goes_glm_l2_lcfa',
     product: item.product || 'GLM-L2-LCFA',
   };
@@ -35,7 +43,29 @@ function flashesFromPayload(payload) {
 }
 
 function clearLightning(map3DElement) {
+  // Scoped clear: lightning event particles are independent from clouds/rain and
+  // must never remove other weather layers.
   try { map3DElement?.querySelectorAll?.('[data-gfs-layer="lightning"]')?.forEach((el) => el.remove()); } catch (_) {}
+}
+
+function fadeRemoveLightningElement(el, durationMs = LIGHTNING_FADE_OUT_MS) {
+  if (!el || el.__gfsLightningRemoving) return;
+  el.__gfsLightningRemoving = true;
+  try {
+    el.style.transition = `opacity ${Math.max(120, durationMs)}ms ease-out, transform ${Math.max(120, durationMs)}ms ease-out`;
+    el.style.opacity = '0';
+    el.style.transform = 'scale(0.72)';
+  } catch (_) {}
+  window.setTimeout(() => { try { el.remove(); } catch (_) {} }, Math.max(140, durationMs));
+}
+
+function scheduleLightningExpiry(el, item) {
+  const expiresIn = Math.max(0, toNumber(item?.expires_in_seconds, 0));
+  const fadeMs = Math.max(120, LIGHTNING_FADE_OUT_MS);
+  if (!expiresIn) { fadeRemoveLightningElement(el, fadeMs); return; }
+  const delayMs = Math.max(0, expiresIn * 1000 - fadeMs);
+  try { el.setAttribute('data-lightning-expires-in-seconds', expiresIn.toFixed(1)); } catch (_) {}
+  window.setTimeout(() => fadeRemoveLightningElement(el, fadeMs), delayMs);
 }
 
 function makeLightningTemplate(flash) {
@@ -72,6 +102,8 @@ function createFlashMarker(flash) {
   marker.setAttribute('data-gfs-layer', 'lightning');
   marker.setAttribute('data-lightning-source', flash.source || 'goes_glm_l2_lcfa');
   marker.setAttribute('data-lightning-age-seconds', String(Math.round(age)));
+  marker.setAttribute('data-lightning-ttl-seconds', String(Math.round(toNumber(flash.event_ttl_seconds, DEFAULT_LIGHTNING_FLASH_TTL_SECONDS))));
+  marker.style.opacity = '1';
   marker.append(makeLightningTemplate(flash));
   attachPolygonHover(marker, {
     title: 'GOES GLM lightning',
@@ -109,6 +141,9 @@ function createClusterHalo(region) {
   marker.sizePreserved = true;
   marker.setAttribute('data-gfs-layer', 'lightning');
   marker.setAttribute('data-lightning-region', 'cluster');
+  marker.setAttribute('data-lightning-age-seconds', String(Math.round(toNumber(region.age_seconds, 0))));
+  marker.setAttribute('data-lightning-ttl-seconds', String(Math.round(toNumber(region.event_ttl_seconds, DEFAULT_LIGHTNING_FLASH_TTL_SECONDS))));
+  marker.style.opacity = '1';
   marker.append(tpl);
   attachPolygonHover(marker, {
     title: 'Lightning cluster',
@@ -127,16 +162,20 @@ export function renderLightningLayer({ payload, map3DElement }) {
     .filter((f) => Number.isFinite(toNumber(f.lat ?? f.latitude, NaN)) && Number.isFinite(toNumber(f.lon ?? f.lng ?? f.longitude, NaN)))
     .sort((a, b) => toNumber(a.age_seconds, 0) - toNumber(b.age_seconds, 0))
     .slice(0, MAX_LIGHTNING_MARKERS);
-  const regions = Array.isArray(payload?.regions) ? payload.regions.slice(0, 40) : [];
+  const eventTtl = Math.max(5, toNumber(payload?.event_ttl_seconds ?? payload?.particle_ttl_seconds, DEFAULT_LIGHTNING_FLASH_TTL_SECONDS));
+  const regions = (Array.isArray(payload?.regions) ? payload.regions : [])
+    .map((r) => ({ ...r, event_ttl_seconds: eventTtl, expires_in_seconds: Math.max(0, eventTtl - toNumber(r.age_seconds, 0)) }))
+    .filter((r) => toNumber(r.expires_in_seconds, 0) > 0)
+    .slice(0, 40);
   const frag = document.createDocumentFragment();
   let markers = 0;
   for (const r of regions) {
     const halo = createClusterHalo(r);
-    if (halo) { frag.append(halo); markers += 1; }
+    if (halo) { scheduleLightningExpiry(halo, r); frag.append(halo); markers += 1; }
   }
   for (const f of flashes) {
     const marker = createFlashMarker(f);
-    if (marker) { frag.append(marker); markers += 1; }
+    if (marker) { scheduleLightningExpiry(marker, f); frag.append(marker); markers += 1; }
   }
   if (markers) map3DElement.append(frag);
   console.info('[gfs lightning] rendered', {
@@ -145,6 +184,7 @@ export function renderLightningLayer({ payload, map3DElement }) {
     flashes: flashes.length,
     regions: regions.length,
     markers,
+    eventTtlSeconds: eventTtl,
     fallback: Boolean(payload?.fallback_used),
   });
   return () => clearLightning(map3DElement);
