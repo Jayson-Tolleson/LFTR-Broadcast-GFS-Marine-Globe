@@ -264,6 +264,57 @@ def _build_polygons(mask: list[list[bool]], score_grid: list[list[float]], bbox:
                 return polygons
     return polygons
 
+
+def _wrap_lon_pm180(lon: float) -> float:
+    x = float(lon)
+    while x > 180.0:
+        x -= 360.0
+    while x <= -180.0:
+        x += 360.0
+    return x
+
+
+def _polygon_path(poly: dict[str, Any]) -> list[dict[str, float]]:
+    coords = poly.get('coordinates') or poly.get('path') or []
+    path: list[dict[str, float]] = []
+    for point in coords if isinstance(coords, list) else []:
+        if isinstance(point, dict):
+            lat = _safe(point.get('lat', point.get('latitude')))
+            lon = _safe(point.get('lng', point.get('lon', point.get('longitude'))))
+            alt = _safe(point.get('altitude'), 0.0)
+        elif isinstance(point, (list, tuple)) and len(point) >= 2:
+            lon = _safe(point[0])
+            lat = _safe(point[1])
+            alt = _safe(point[2], 0.0) if len(point) >= 3 else 0.0
+        else:
+            continue
+        if not (math.isfinite(lat) and math.isfinite(lon) and -90.0 <= lat <= 90.0):
+            continue
+        out = {'lat': round(float(lat), 6), 'lng': round(_wrap_lon_pm180(float(lon)), 6)}
+        if math.isfinite(alt):
+            out['altitude'] = round(float(alt), 3)
+        path.append(out)
+    if len(path) >= 2 and abs(path[0]['lat'] - path[-1]['lat']) < 1e-7 and abs(path[0]['lng'] - path[-1]['lng']) < 1e-7:
+        path.pop()
+    return path if len(path) >= 3 else []
+
+
+def _finalize_polygon_contract(polygons: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for poly in polygons or []:
+        if not isinstance(poly, dict):
+            continue
+        path = _polygon_path(poly)
+        if len(path) < 3:
+            continue
+        row = dict(poly)
+        row['path'] = path
+        row['point_count'] = len(path)
+        row['water_validated'] = True
+        row.setdefault('type', row.get('band') or 'bait_zone')
+        out.append(row)
+    return out
+
 def _derive_front_lines_from_sst(sst: list[list[float]], bbox: list[float]) -> list[dict[str, Any]]:
     ny = len(sst)
     nx = len(sst[0]) if ny else 0
@@ -508,9 +559,9 @@ def derive_bait_payload(atmospheric: dict[str, Any], ocean: dict[str, Any], bio:
             poly['driver'] = poly.get('driver') or 'surface_front'
         return polygons
 
-    outer_polygons = _attach_depth(outer_polygons, 'outer')
-    inner_polygons = _attach_depth(inner_polygons, 'inner')
-    core_polygons = _attach_depth(core_polygons, 'core')
+    outer_polygons = _finalize_polygon_contract(_attach_depth(outer_polygons, 'outer'))
+    inner_polygons = _finalize_polygon_contract(_attach_depth(inner_polygons, 'inner'))
+    core_polygons = _finalize_polygon_contract(_attach_depth(core_polygons, 'core'))
     fronts = _derive_front_lines_from_sst(sst, bbox) if valid_cells > 0 else []
     overall = round((sum(item['probability'] for item in bait_score) / len(bait_score)), 3) if bait_score else 0.0
     polygon_total = len(outer_polygons) + len(inner_polygons) + len(core_polygons)

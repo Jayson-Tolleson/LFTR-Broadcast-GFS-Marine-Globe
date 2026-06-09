@@ -199,14 +199,41 @@ class OceanBaitFrameMixin:
         if speed >= 2.5:
             color, label, score = "red", "Strong current / rough drift caution", 0.82
         elif speed >= 1.5:
-            color, label, score = "orange", "Active current / plan drift", 0.62
+            color, label, score = "yellow", "Active current / plan drift", 0.62
         elif speed >= 0.75:
             color, label, score = "yellow", "Moderate current", 0.42
         else:
             color, label, score = "green", "Light current", 0.22
         if sst_c is not None and math.isfinite(float(sst_c)) and (sst_c < 8 or sst_c > 31):
             score = min(1.0, score + 0.08)
-        return {"color": color, "label": label, "score": round(score, 3), "risk": round(score, 3)}
+        return {"color": color, "label": label, "summary": label, "score": round(score, 3), "risk": round(score, 3)}
+
+    @staticmethod
+    def _json_float(value: Any, digits: int | None = None) -> float | None:
+        try:
+            f = float(value)
+        except Exception:
+            return None
+        if not math.isfinite(f):
+            return None
+        return round(f, digits) if digits is not None else f
+
+    @classmethod
+    def _safety_from_wave_ft(cls, wave_ft: Any, fallback: dict[str, Any] | None = None) -> dict[str, Any]:
+        ft = cls._json_float(wave_ft, 3)
+        if ft is None:
+            out = dict(fallback or {"color": "gray", "label": "Wave height unavailable", "score": 0.5, "risk": 0.5})
+            out.setdefault("summary", out.get("label") or "Wave height unavailable")
+            out["wave_height_ft"] = None
+            out["wave_policy"] = "missing_wave_height_preserve_current_or_unknown"
+            return out
+        if ft <= 3.0:
+            color, label, score = "green", "0-3 ft seas: favorable boating zone", 0.22
+        elif ft <= 4.0:
+            color, label, score = "yellow", "3-4 ft seas: caution boating zone", 0.55
+        else:
+            color, label, score = "red", "4+ ft seas: hazardous boating zone", 0.86
+        return {"color": color, "label": label, "summary": label, "score": score, "risk": score, "wave_height_ft": ft, "wave_policy": "combined_seas_thresholds_green_le_3_yellow_le_4_red_gt_4"}
 
     def _proxy_swells_for_point(self, lat: float, lon: float, regional_boats: list[dict[str, Any]]) -> list[dict[str, Any]]:
         best = None
@@ -251,6 +278,84 @@ class OceanBaitFrameMixin:
             return max(abs(vals[index] - vals[index - 1]), abs(vals[index + 1] - vals[index]))
         return abs(float(fallback or 0.08))
 
+
+    @classmethod
+    def _sanitize_swells(cls, swells: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for swell in swells or []:
+            if not isinstance(swell, dict):
+                continue
+            height_ft = cls._json_float(swell.get("heightFt", swell.get("height_ft")), 2)
+            height_m = cls._json_float(swell.get("heightM", swell.get("height_m")), 3)
+            if height_ft is None and height_m is not None:
+                height_ft = round(height_m * 3.28084, 2)
+            if height_m is None and height_ft is not None:
+                height_m = round(height_ft / 3.28084, 3)
+            row = {
+                "source": str(swell.get("source") or "wave_unavailable"),
+                "heightFt": height_ft,
+                "heightM": height_m,
+                "periodS": cls._json_float(swell.get("periodS", swell.get("period_s", swell.get("period"))), 1),
+                "dirDeg": cls._json_float(swell.get("dirDeg", swell.get("direction_deg", swell.get("direction"))), 1),
+            }
+            out.append(row)
+        return out[:3]
+
+    def _boats_from_ocean_points(self, payload: dict[str, Any], *, limit: int = 12) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        rows = payload.get("current_points") or payload.get("ocean_points") or payload.get("points") or []
+        boats: list[dict[str, Any]] = []
+        rejected_nan = 0
+        rejected_land = 0
+        for idx, row in enumerate(rows if isinstance(rows, list) else []):
+            lat = self._json_float(row.get("lat"), 6)
+            lon = self._json_float(row.get("lon", row.get("lng")), 6)
+            if lat is None or lon is None or lat < -90 or lat > 90:
+                rejected_nan += 1
+                continue
+            if row.get("water") is False or row.get("valid") is False:
+                rejected_land += 1
+                continue
+            water = row.get("water") if isinstance(row.get("water"), dict) else {}
+            sst_c = self._json_float(row.get("sst_c", water.get("sst_c")), 3)
+            sst_f = self._json_float(row.get("sst_f", water.get("sst_f")), 1)
+            if sst_c is None and sst_f is not None:
+                sst_c = round((sst_f - 32.0) * 5.0 / 9.0, 3)
+            if sst_c is None:
+                rejected_land += 1
+                continue
+            u = self._json_float(row.get("u", row.get("current_u")), 4)
+            v = self._json_float(row.get("v", row.get("current_v")), 4)
+            speed_kt = self._json_float(row.get("speedKt", row.get("current_speed_kt")), 3)
+            if speed_kt is None and u is not None and v is not None:
+                speed_kt = round(math.hypot(u, v) * 1.943844, 3)
+            dir_deg = self._json_float(row.get("dirDeg", row.get("current_dir_deg")), 1)
+            if dir_deg is None and u is not None and v is not None:
+                d = self._current_dir_deg(u, v)
+                dir_deg = round(d, 1) if d is not None else None
+            swells = self._sanitize_swells(row.get("swells") or row.get("swell_components") or [])
+            wave_ft = self._json_float(((row.get("waves") or {}) if isinstance(row.get("waves"), dict) else {}).get("sigHeightFt"), 2)
+            if wave_ft is None and swells:
+                wave_ft = swells[0].get("heightFt")
+            safety = self._safety_from_wave_ft(wave_ft, self._safety_from_current(speed_kt or 0.0, sst_c))
+            boats.append({
+                "id": f"ocean-point-boat-{idx}",
+                "lat": lat,
+                "lon": self._lon_pm180(lon),
+                "source": row.get("source") or payload.get("source") or "ocean_points",
+                "derivedFrom": "shared_sst_current_ocean_points",
+                "current": {"u": u, "v": v, "speedKt": speed_kt, "dirDeg": dir_deg},
+                "waves": {"source": "sanitized_optional_ndbc_or_proxy", "sigHeightFt": wave_ft, "components": swells},
+                "swells": swells,
+                "safety": safety,
+                "headingDeg": dir_deg,
+                "water": {"sst_c": sst_c, "sst_f": sst_f if sst_f is not None else round(sst_c * 9 / 5 + 32, 1)},
+                "sst_c": sst_c,
+                "sst_f": sst_f if sst_f is not None else round(sst_c * 9 / 5 + 32, 1),
+                "cell": {"water": True, "mask": "finite_sst_shared_water_gate", "validNeighbors": row.get("valid_neighbors", row.get("validNeighbors", 9)), "possibleNeighbors": row.get("possible_neighbors", row.get("possibleNeighbors", 9))},
+            })
+            if len(boats) >= limit:
+                break
+        return boats, {"source_rows": len(rows if isinstance(rows, list) else []), "boats_generated": len(boats), "rejected_nan": rejected_nan, "rejected_land": rejected_land, "stations_considered": 0, "stations_with_waves": sum(1 for b in boats if b.get("waves", {}).get("sigHeightFt") is not None), "stations_with_usable_location": len(boats)}
 
 
     @staticmethod
@@ -693,7 +798,9 @@ class OceanBaitFrameMixin:
             swells = self._proxy_swells_for_point(lat, lon, regional_boats)
             dlat = max(0.004, min(1.2, abs(self._grid_spacing(lat_values, iy, fallback_dlat))))
             dlon = max(0.004, min(1.2, abs(self._grid_spacing(lon_values_raw, ix, fallback_dlon))))
-            safety = self._safety_from_current(speed_kt, sst_c)
+            swells = self._sanitize_swells(swells)
+            wave_ft = swells[0].get("heightFt") if swells and isinstance(swells[0], dict) else None
+            safety = self._safety_from_wave_ft(wave_ft, self._safety_from_current(speed_kt, sst_c))
             seed = f"boat:{round(west,3)}:{round(south,3)}:{round(east,3)}:{round(north,3)}:{iy}:{ix}:{round(speed_kt,3)}"
             # Put the rendered boat inside the live water cell, not exactly on the
             # HYCOM node. The jitter is deterministic and bounded by cell spacing.
@@ -1242,6 +1349,11 @@ class OceanBaitFrameMixin:
         scene = self.build_scene_plan(bbox, visible_bbox, layer="boats")
         ocean = self.ocean_payload(bbox, visible_bbox=scene.get("visible_bbox"))
         boats = ocean.get("boats", []) or []
+        derived_diag: dict[str, Any] = {}
+        if not boats:
+            boat_limit = max(1, min(18, int(((scene.get("render_budget") or {}).get("max_boats") or 12))))
+            boats, derived_diag = self._boats_from_ocean_points(ocean, limit=boat_limit)
+        boats = [b for b in boats if self._json_float(b.get("lat")) is not None and self._json_float(b.get("lon", b.get("lng"))) is not None]
         source = str(ocean.get("source") or "")
         mode = str(ocean.get("mode") or "")
         is_fallback = ("fallback" in source.lower()) or ("marker_ocean_solve" in source.lower()) or ("fallback" in mode.lower()) or ("proxy" in mode.lower())
@@ -1250,7 +1362,8 @@ class OceanBaitFrameMixin:
         # SST/current-backed water samples; this avoids saying “34 boats” when
         # all 34 were intentionally rejected as marker/proxy fallback.
         return {
-            "ok": bool(ocean.get("ok")),
+            "ok": bool(boats or ocean.get("points") or ocean.get("current_points")),
+            "incomplete": not bool(boats),
             "source": ocean.get("source"),
             "mode": ocean.get("mode"),
             "engine": ocean.get("engine"),
@@ -1274,7 +1387,7 @@ class OceanBaitFrameMixin:
             "source_meta": ocean.get("source_meta") or {},
             "sst_landmask": ((ocean.get("source_meta") or {}).get("sst_landmask") or {}),
             "landmask_contract": ((ocean.get("source_meta") or {}).get("landmask_contract") or "finite_sst_is_shared_water_gate_for_boater_bait"),
-            "diagnostics": ocean.get("diagnostics"),
+            "diagnostics": {**(ocean.get("diagnostics") or {}), "boater": {**derived_diag, "boats_generated": len(boats), "cache_source": (ocean.get("cache") or {}).get("mode"), "live_source": ocean.get("source")}},
             "cache": ocean.get("cache"),
             "quality_policy": ocean.get("quality_policy") or self._live_payload_policy(),
             "payload_state": ocean.get("payload_state") or ("live" if not is_fallback and boats else "provider_empty"),
@@ -1556,6 +1669,54 @@ class OceanBaitFrameMixin:
         if not score_rows:
             return _bait_fail("live_bait_grid_empty")
 
+        def _valid_path(poly: dict[str, Any]) -> list[dict[str, float]]:
+            coords = poly.get("path") or poly.get("coordinates") or []
+            path: list[dict[str, float]] = []
+            for pt in coords if isinstance(coords, list) else []:
+                if isinstance(pt, dict):
+                    lat = self._json_float(pt.get("lat", pt.get("latitude")), 6)
+                    lon = self._json_float(pt.get("lng", pt.get("lon", pt.get("longitude")),), 6)
+                    alt = self._json_float(pt.get("altitude"), 3)
+                elif isinstance(pt, (list, tuple)) and len(pt) >= 2:
+                    lon = self._json_float(pt[0], 6)
+                    lat = self._json_float(pt[1], 6)
+                    alt = self._json_float(pt[2], 3) if len(pt) >= 3 else None
+                else:
+                    continue
+                if lat is None or lon is None or lat < -90 or lat > 90:
+                    continue
+                row = {"lat": lat, "lng": self._lon_pm180(lon)}
+                if alt is not None:
+                    row["altitude"] = alt
+                path.append(row)
+            if len(path) >= 2 and abs(path[0]["lat"] - path[-1]["lat"]) < 1e-7 and abs(path[0]["lng"] - path[-1]["lng"]) < 1e-7:
+                path.pop()
+            return path if len(path) >= 3 else []
+
+        def _normalize_polys(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            out: list[dict[str, Any]] = []
+            for poly in rows or []:
+                if not isinstance(poly, dict):
+                    continue
+                path = _valid_path(poly)
+                if len(path) < 3:
+                    continue
+                p = dict(poly)
+                p["path"] = path
+                p["point_count"] = len(path)
+                p.setdefault("type", p.get("band") or "bait_zone")
+                p.setdefault("water_validated", True)
+                out.append(p)
+            return out
+
+        bait["outer_polygons"] = _normalize_polys(list(bait.get("outer_polygons") or []))
+        bait["inner_polygons"] = _normalize_polys(list(bait.get("inner_polygons") or bait.get("polygons") or []))
+        bait["core_polygons"] = _normalize_polys(list(bait.get("core_polygons") or []))
+        bait["polygons"] = bait["inner_polygons"]
+        polygon_rows = bait["inner_polygons"] or bait["outer_polygons"] or bait["core_polygons"]
+        if not polygon_rows:
+            return _bait_fail("live_bait_polygons_empty_after_path_validation")
+
         # Keep bait.source as "full_stack" for the frontend renderer readiness contract.
         # Put the live provider name in live_source/provider_source instead of replacing it;
         # older JS checks bait.source === "full_stack" before trusting server polygons.
@@ -1577,6 +1738,13 @@ class OceanBaitFrameMixin:
             "contour_contract": "server_marching_square_polygons_with_depth_extrusion_metadata",
         })
 
+        diagnostics.update({
+            "valid_ocean_point_count": len(score_rows),
+            "water_mask_count": ((bait.get("meta") or {}).get("valid_cells") or len(score_rows)),
+            "bait_polygon_count": len(polygon_rows),
+            "provider_counts": {"ocean_grid_rows": len((ocean_raw or {}).get("sst") or []), "advanced_bait_rows": len(advanced_rows), "polygons": len(polygon_rows)},
+        })
+
         payload: Dict[str, Any] = {
             **solved,
             "ok": True,
@@ -1593,6 +1761,11 @@ class OceanBaitFrameMixin:
             "landmask_contract": (((ocean_raw or {}).get("source_meta") or {}).get("landmask_contract") or "finite_sst_is_shared_water_gate_for_bait"),
             "quality_policy": self._live_payload_policy(),
             "bait": bait,
+            "polygons": polygon_rows,
+            "zones": polygon_rows,
+            "polygon_count": len(polygon_rows),
+            "valid_ocean_point_count": len(score_rows),
+            "water_mask_count": ((bait.get("meta") or {}).get("valid_cells") or len(score_rows)),
             "bait_score": score_rows,
             "advanced_bait_rows": advanced_rows,
             "advancedBaitRows": advanced_rows,

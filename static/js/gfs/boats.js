@@ -114,14 +114,14 @@ function dominantWaveHeightFt(waves = {}) {
 function boatingBandForWaves(waves = {}) {
   const ft = dominantWaveHeightFt(waves);
   if (ft == null) return { color: 'green', label: 'Wave height unavailable; showing calm default', waveHeightFt: null };
-  if (ft >= 4) return { color: 'red', label: '4+ ft seas: hazardous boating zone', waveHeightFt: ft };
-  if (ft >= 2) return { color: 'yellow', label: '2–3.9 ft seas: caution boating zone', waveHeightFt: ft };
-  return { color: 'green', label: '0–2 ft seas: favorable boating zone', waveHeightFt: ft };
+  if (ft > 4) return { color: 'red', label: '4+ ft seas: hazardous boating zone', waveHeightFt: ft };
+  if (ft > 3) return { color: 'yellow', label: '3–4 ft seas: caution boating zone', waveHeightFt: ft };
+  return { color: 'green', label: '0–3 ft seas: favorable boating zone', waveHeightFt: ft };
 }
 
 function colorForSafety(color, speedKt = 0, waves = null) {
   // Boating layer color is intentionally keyed to sea-state thresholds:
-  // 0–2 ft green, 2–3.9 ft yellow, 4+ ft red. Current speed can still be
+  // 0–3 ft green, >3–4 ft yellow, >4 ft red. Current speed can still be
   // displayed in hover/HUD, but it should not repaint the boating zone by itself.
   if (waves) {
     const band = boatingBandForWaves(waves);
@@ -421,7 +421,7 @@ function safetyFromSeaState(currentSpeedKt, waves, wind) {
   if (Number.isFinite(windKt) && windKt >= 30 && color !== 'red') {
     label += ' / high wind advisory';
   }
-  return { color, label, waveHeightFt: band.waveHeightFt, thresholds: '0-2ft green; 2-3.9ft yellow; 4ft+ red', derivedFrom: 'interpolated_current_wave_field' };
+  return { color, label, waveHeightFt: band.waveHeightFt, thresholds: '0-3ft green; >3-4ft yellow; >4ft red', derivedFrom: 'interpolated_current_wave_field' };
 }
 
 function normalizeBoatFromPoint(point, index) {
@@ -656,7 +656,7 @@ function insidePayloadBbox(sample, payload) {
 }
 
 function boatsFromPayload(payload) {
-  if (!boatPayloadSstReady(payload)) return [];
+  if (!boatPayloadSstReady(payload) && !Array.isArray(payload?.boats)) return [];
   const samples = allBoatSamples(payload).filter((s) => insidePayloadBbox(s, payload));
   const sstBacked = selectSstBackedBoatPoints(samples, VIEWPORT_BOAT_COUNT, payload)
     .map(normalizeBoatFromPoint)
@@ -925,8 +925,8 @@ export function renderBoatsLayer({ payload, map3DElement }) {
     rejectedFallbackBoats: rejectedBoatCount(payload),
     backendRejections: payload?.rejection_counts || payload?.grid?.rejection_counts || null,
     frontendRejections: payload?.__frontendBoatRejected || null,
-    model: MODEL_SRC,
-    glbAttempted: true,
+    model: MODEL_SRC || null,
+    glbAttempted: Boolean(MODEL_SRC),
     clampToGround: true,
     modelTransform: {
       waterAltitudeM: BOAT_WATER_ALTITUDE_M,
