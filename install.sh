@@ -27,21 +27,3 @@ fi
 ensure_bootstrap_packages
 normalize_installer_permissions
 exec bash "${ROOT_DIR}/deploy/install.sh" "$@"
-
-
-# LFTR install-time cache/data permissions.
-APP_DIR="${APP_DIR:-/home/jayson_tolleson/broadcast}"
-APP_USER="${APP_USER:-jayson_tolleson}"
-APP_GROUP="${APP_GROUP:-jayson_tolleson}"
-mkdir -p "$APP_DIR/.cache" "$APP_DIR/data_sources" "$APP_DIR/data_sources/hycom_cache" "$APP_DIR/data_sources/nhd_runtime_cache/_build_logs" "$APP_DIR/data_sources/nhdplus_hr_state_cache/_build_logs" 2>/dev/null || true
-chown -R "$APP_USER:$APP_GROUP" "$APP_DIR/.cache" "$APP_DIR/data_sources" 2>/dev/null || true
-chmod -R u+rwX,g+rwX "$APP_DIR/.cache" "$APP_DIR/data_sources" 2>/dev/null || true
-
-
-
-# LFTR service working-directory stability.
-if [ -f "$APP_DIR/deploy/systemd/broadcast.service" ]; then
-  sudo cp "$APP_DIR/deploy/systemd/broadcast.service" /etc/systemd/system/broadcast.service
-  sudo systemctl daemon-reload
-fi
-

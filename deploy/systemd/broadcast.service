@@ -1,14 +1,17 @@
 [Unit]
-Description=Broadcast API Service
+Description=LFTR Broadcast / GFS Marine Globe
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-Environment=APP_DIR=/home/jayson_tolleson/broadcast
+Environment=APP_DIR=${APP_DIR}
+Environment=VENV_DIR=${APP_DIR}/venv
+Environment=APP_USER=${APP_USER}
+Environment=APP_GROUP=${APP_GROUP}
 Type=simple
 User=${APP_USER}
 Group=${APP_GROUP}
-WorkingDirectory=/home/jayson_tolleson/broadcast
+WorkingDirectory=${APP_DIR}
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=MALLOC_ARENA_MAX=2
@@ -25,10 +28,9 @@ EnvironmentFile=/etc/broadcast/install.env
 ExecStartPre=/bin/bash -lc 'test -x ${APP_DIR}/venv/bin/python && ${APP_DIR}/venv/bin/python -c "import hypercorn, quart"'
 ExecStart=${APP_DIR}/scripts/run_broadcast_service.sh
 Restart=always
-SuccessExitStatus=143 SIGTERM
 RestartSec=3
-KillMode=control-group
-TimeoutStopSec=18
+KillMode=mixed
+TimeoutStopSec=25
 LimitNOFILE=20000
 MemoryMax=10G
 

@@ -1490,34 +1490,6 @@ def sample_surface_temperature(svc: Any, bbox: dict[str, float], lat: float, lon
         result.update({"source": "gfs_ncss_surface_t0m_candidate_failed", "error": str(exc), "method": "failed"})
     return result
 
-def inland_conditions_payload(static_dir: Path, svc: Any, bbox: dict[str, float] | None, lat: float, lon: float, live: bool = False) -> dict[str, Any]:
-    b = _bbox_dict(bbox or {"west": lon - 0.2, "south": lat - 0.2, "east": lon + 0.2, "north": lat + 0.2})
-    water = nearest_water(static_dir, lat, lon, b)
-    temp = sample_surface_temperature(svc, b, lat, lon, live=live)
-    water_temp_f = temp.get("value_f")
-    confidence = "medium" if water_temp_f is not None and live else "unavailable"
-    temp_points = []
-    if water_temp_f is not None and live:
-        temp_points.append(_temperature_point(water or {"name": "viewport inland water", "kind": "sample"}, lat, lon, water_temp_f, temp.get("used") or temp.get("source"), confidence, 0))
-    return {
-        "ok": True,
-        "status": "ok",
-        "source": "usgs_nhdplus_hr_plus_gfs_ncss_surface_candidates",
-        "bbox": [b["west"], b["south"], b["east"], b["north"]],
-        "query": {"lat": lat, "lon": lon},
-        "inland_water": bool(water),
-        "nearest_water": water,
-        "surface_temperature": temp,
-        "water_temp_f": water_temp_f,
-        "water_temp_est_f": None,
-        "water_temp_confidence": confidence,
-        "temperature_points": temp_points,
-        "temperature_point_count": len(temp_points),
-        "note": "Real-only temperature policy: no bootstrap 68°F and no estimated labels. t0m/TMP:surface/skt labels appear only when live candidate sampling succeeds.",
-        "contract": "lftr_inland_conditions_v2_real_temperature_only",
-    }
-
-
 def _inland_temp_factor_pct(temp_f: float | None) -> float:
     if temp_f is None or not math.isfinite(float(temp_f)):
         return 50.0
@@ -1559,98 +1531,6 @@ def _inland_factor_breakdown(temp_f: float | None, current_speed_m_s: float | No
         'depth_factor_pct': round(_inland_depth_factor_pct(bait_depth_ft, colorado=colorado), 1),
         'wind_factor_pct': round(_inland_wind_factor_pct(wind_speed_m_s), 1),
     }
-
-def inland_bait_payload(static_dir: Path, svc: Any, bbox: dict[str, float] | None, lat: float | None = None, lon: float | None = None, live: bool = False) -> dict[str, Any]:
-    b = _bbox_dict(bbox)
-    water = inland_water_payload(static_dir, b)
-    targets = []
-    bait_score_rows: list[dict[str, Any]] = []
-    temperature_points: list[dict[str, Any]] = []
-    zones: list[dict[str, Any]] = []  # round/ellipse bait boils disabled; frontend draws marching-square contours only
-    for item in water.get("polygons", []) + water.get("lines", []):
-        c = _centroid(item.get("path") or [])
-        if not c:
-            continue
-
-        # Default: fast geometry-only bait. Do not call GFS/NCSS and do not
-        # manufacture 68°F temps unless live=1 explicitly succeeds.
-        temp: float | None = None
-        source: str | None = None
-        confidence: str | None = "unavailable"
-        if live:
-            cond = inland_conditions_payload(static_dir, svc, {"west": c[1] - 0.15, "south": c[0] - 0.15, "east": c[1] + 0.15, "north": c[0] + 0.15}, c[0], c[1], live=True)
-            temp = cond.get("water_temp_f") if cond.get("water_temp_f") is not None else None
-            source = cond.get("surface_temperature", {}).get("used") or cond.get("surface_temperature", {}).get("source")
-            confidence = cond.get("water_temp_confidence")
-
-        kind = str(item.get("kind") or "water").lower()
-        type_bonus = 0.45 if kind in {"reservoir", "lake", "pond"} else 0.25
-        if temp is not None:
-            temp_score = max(0.0, 1.0 - abs(float(temp) - 67.0) / 24.0)
-            score = max(1.0, min(5.0, 1.0 + 4.0 * (0.58 * temp_score + type_bonus * 0.22)))
-        else:
-            # Honest non-temperature freshwater structure score.
-            score = max(1.0, min(5.0, 2.2 + type_bonus))
-
-        target = {
-            "name": item.get("name"),
-            "kind": item.get("kind"),
-            "centroid": {"lat": c[0], "lng": c[1]},
-            "bait_score": round(score, 2),
-            "temperature_source": source,
-            "confidence": confidence,
-            "reasons": ["NHD/NHDPlus HR waterbody geometry", "freshwater structure heuristic", "temperature omitted unless live t0m/TMP:surface/skt sampling succeeds"],
-        }
-        if temp is not None:
-            target["water_temp_f"] = round(float(temp), 1)
-        targets.append(target)
-        bait_score_rows.append({
-            "name": item.get("name") or "Inland water",
-            "kind": item.get("kind"),
-            "lat": round(float(c[0]), 6),
-            "lon": round(float(c[1]), 6),
-            "lng": round(float(c[1]), 6),
-            "probability": round(max(0.0, min(1.0, score / 5.0)), 4),
-            "bait_score": round(score, 2),
-            "score_5": round(score, 2),
-            "water_temp_f": round(float(temp), 1) if temp is not None else None,
-            "surface_temp_f": round(float(temp), 1) if temp is not None else None,
-            "source": "inland_lake_ncss_temperature_bait_score" if temp is not None else "inland_lake_geometry_bait_score_waiting_for_ncss_temp",
-            "method": "inland_lake_dense_advanced_bait_square_contours_plus_current_depth",
-            "temperature_source": source,
-            "confidence": confidence,
-        })
-
-        # Do not append round/ellipse boil zones here. Lake bait visualization is
-        # generated on the frontend from temperature_points/bait_score_rows with
-        # marching squares only.
-
-        if temp is not None:
-            sample_count = 5 if item.get("kind") in {"reservoir", "lake", "pond"} else 4
-            for idx, (plat, plng) in enumerate(_path_sample_points(item.get("path") or [], max_points=sample_count)):
-                temperature_points.append(_temperature_point(item, plat, plng, float(temp), source, confidence, idx))
-    return {
-        "ok": True,
-        "status": "ok",
-        "source": "inland_water_conditions_bait_v3_real_temperature_only",
-        "bbox": water.get("bbox"),
-        "targets": targets,
-        "bait_score": bait_score_rows,
-        "advancedBaitRows": bait_score_rows,
-        "advanced_bait_rows": bait_score_rows,
-        "zones": zones,
-        "renderer": "inland_advanced_bait_grid_squares_positive_depth_extrusion",
-        "style_contract": "bright_green_fill_orange_glow_outline_small_lake_squares_above_water",
-        "temperature_points": temperature_points,
-        "count": len(targets),
-        "zone_count": len(zones),
-        "bait_score_count": len(bait_score_rows),
-        "advanced_bait_row_count": len(bait_score_rows),
-        "temperature_point_count": len(temperature_points),
-        "temperature_policy": "no estimated labels; no fallback 68F; real temps only when live candidate sampling succeeds",
-        "contract": "lftr_inland_bait_v4_temp_bait_score_marching_squares_only",
-    }
-
 
 # --- LFTR appended inland environment helpers: wind/current/depth + Colorado corridor intelligence ---
 
@@ -1958,11 +1838,16 @@ def inland_bait_payload(static_dir: Path, svc: Any, bbox: dict[str, float] | Non
         'bbox': water.get('bbox'),
         'targets': targets,
         'bait_score': bait_score_rows,
+        'advancedBaitRows': bait_score_rows,
+        'advanced_bait_rows': bait_score_rows,
         'zones': zones,
+        'renderer': 'inland_advanced_bait_grid_squares_positive_depth_extrusion',
+        'style_contract': 'bright_green_fill_orange_glow_outline_small_lake_squares_above_water',
         'temperature_points': temperature_points,
         'count': len(targets),
         'zone_count': len(zones),
         'bait_score_count': len(bait_score_rows),
+        'advanced_bait_row_count': len(bait_score_rows),
         'temperature_point_count': len(temperature_points),
         'temperature_policy': 'no estimated labels; no fallback 68F; real temps only when live candidate sampling succeeds',
         'current_policy': 'Colorado-corridor heuristic plus generic wind-driven inland drift heuristic without visible stream rendering',

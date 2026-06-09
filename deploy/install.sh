@@ -193,8 +193,13 @@ phase3_inland_water_data() {
   ui_info "Runtime drawing reads one shared local json.gz tile cache only; ArcGIS/NHD fetches are background cache-build jobs."
 
   mkdir -p "$APP_DIR/static/data/nhdplus_hr/tiles" \
-           "$APP_DIR/data_sources/nhd_runtime_cache/_build_logs"
-  chown -R "$INSTALL_USER:$INSTALL_USER" "$APP_DIR/static/data" "$APP_DIR/data_sources" 2>/dev/null || true
+           "$APP_DIR/.cache" \
+           "$APP_DIR/data_sources" \
+           "$APP_DIR/data_sources/hycom_cache" \
+           "$APP_DIR/data_sources/nhd_runtime_cache/_build_logs" \
+           "$APP_DIR/data_sources/nhdplus_hr_state_cache/_build_logs"
+  chown -R "$INSTALL_USER:$INSTALL_USER" "$APP_DIR/static/data" "$APP_DIR/.cache" "$APP_DIR/data_sources" 2>/dev/null || true
+  chmod -R u+rwX,g+rwX "$APP_DIR/.cache" "$APP_DIR/data_sources" 2>/dev/null || true
 
   if [[ ! -x "$APP_DIR/scripts/install_nhdplus_hr_view_cache.sh" ]]; then
     chmod +x "$APP_DIR/scripts/install_nhdplus_hr_view_cache.sh" 2>/dev/null || true
