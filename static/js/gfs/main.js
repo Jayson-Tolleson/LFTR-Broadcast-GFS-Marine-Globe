@@ -17,6 +17,17 @@ const EARTH_FIRST_BOOT_CACHE_DELAY_MS = 1800;
 const EARTH_FIRST_INLAND_DELAY_MS = 4200;
 const EARTH_FIRST_WARM_DELAY_MS = 7000;
 const LIVE_REFRESH_MIN_GAP_MS = Number(window.GFS_LIVE_REFRESH_MIN_GAP_MS || 90000);
+const CAMERA_STEADY_DEBOUNCE_MS = Number(window.GFS_CAMERA_STEADY_DEBOUNCE_MS || 800);
+const LAYER_REFRESH_TTL_MS = Object.freeze({
+  clouds: Number(window.GFS_CLOUD_RENDER_TTL_MS || 600000),
+  rain: Number(window.GFS_RAIN_RENDER_TTL_MS || 300000),
+  bait: Number(window.GFS_BAIT_RENDER_TTL_MS || 900000),
+  boater: Number(window.GFS_BOATS_RENDER_TTL_MS || 300000),
+  boats: Number(window.GFS_BOATS_RENDER_TTL_MS || 300000),
+  current: Number(window.GFS_CURRENT_RENDER_TTL_MS || 600000),
+  jetstream: Number(window.GFS_JETSTREAM_DATA_TTL_MS || 900000),
+  fish: Number(window.GFS_FISH_RENDER_TTL_MS || 1800000),
+});
 const liveRefreshLastByKey = new Map();
 import { installFishAI } from './fishai.js';
 
@@ -2320,18 +2331,28 @@ function hasEmptyPlaceholderLayerForRefresh(layers = []) {
   });
 }
 
+function layerRefreshTtlMs(layers = []) {
+  const vals = (layers || []).map((layer) => {
+    const l = normalizeSceneLayerName(layer);
+    return Number(LAYER_REFRESH_TTL_MS[l] || 0);
+  }).filter((v) => Number.isFinite(v) && v > 0);
+  return vals.length ? Math.max(...vals) : LIVE_REFRESH_MIN_GAP_MS;
+}
+
 function shouldNudgeLiveRefresh(viewport, layers, reason = '') {
   const key = quantizedRefreshKey(viewport, layers);
   const now = Date.now();
   const last = Number(liveRefreshLastByKey.get(key) || 0);
-  const gap = isMovementRefreshReason(reason) ? LIVE_REFRESH_MIN_GAP_MS * 1.5 : LIVE_REFRESH_MIN_GAP_MS;
+  const layerGap = layerRefreshTtlMs(layers);
+  const baseGap = isMovementRefreshReason(reason) ? LIVE_REFRESH_MIN_GAP_MS * 1.5 : LIVE_REFRESH_MIN_GAP_MS;
+  const gap = Math.max(baseGap, layerGap);
   const placeholderBypass = hasEmptyPlaceholderLayerForRefresh(layers) || /empty_placeholder|cache_miss|first_boot|mandatory/i.test(String(reason || ''));
   if (last && (now - last) < gap && !placeholderBypass) {
-    debugPanelEvent('cache-refresh/throttled', { reason, key, ageMs: now - last, minGapMs: gap });
+    debugPanelEvent('cache-refresh/throttled', { reason, key, ageMs: now - last, minGapMs: gap, layerTtlMs: layerGap, policy: 'viewport_tile_ttl_dedupe_keep_existing_render' });
     return false;
   }
   if (last && (now - last) < gap && placeholderBypass) {
-    debugPanelEvent('cache-refresh/throttle-bypass-empty', { reason, key, ageMs: now - last, minGapMs: gap, policy: 'empty_placeholder_may_queue_first_real_warm' });
+    debugPanelEvent('cache-refresh/throttle-bypass-empty', { reason, key, ageMs: now - last, minGapMs: gap, layerTtlMs: layerGap, policy: 'empty_placeholder_may_queue_first_real_warm' });
   }
   liveRefreshLastByKey.set(key, now);
   return true;
@@ -2618,7 +2639,7 @@ function installSteadyRefresh() {
     // Some Maps 3D builds do not emit gmp-steadystate reliably during orbit.
     // This timer keeps boats/clouds/bait tied to the visible camera after pan,
     // orbit, tilt, heading, and range changes.
-    settleTimer = setTimeout(() => runSettledRefresh(reason), 300);
+    settleTimer = setTimeout(() => runSettledRefresh(reason), CAMERA_STEADY_DEBOUNCE_MS);
   };
 
   const onMove = () => scheduleSettledRefresh('camera_move');

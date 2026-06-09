@@ -16,6 +16,7 @@ from server.gfs_service import GFSService
 from server.gfs.sky import sky_payload
 from server.gfs.inland_water import inland_water_payload, inland_conditions_payload, inland_bait_payload
 from server.gfs.pipeline import scene_frame_payload
+from server.gfs.tile_contract import layer_ttl_seconds, viewport_tile_diagnostics
 
 log = logging.getLogger("server.gfs.routes")
 _INLAND_BUILD_JOBS: dict[str, dict[str, Any]] = {}
@@ -52,6 +53,42 @@ def _refresh_inland_build_jobs() -> None:
         age = now - float(job.get("started_at") or now)
         if not job.get("running") and age > 3600:
             _INLAND_BUILD_JOBS.pop(key, None)
+
+
+def _attach_endpoint_tile_diagnostics(payload: Any, bbox: dict[str, float] | None, layer: str, *, ttl_seconds: int | None = None) -> Any:
+    if not isinstance(payload, dict):
+        return payload
+    diag = payload.setdefault("diagnostics", {})
+    if not isinstance(diag, dict):
+        diag = {}
+        payload["diagnostics"] = diag
+    try:
+        layer_diag = viewport_tile_diagnostics(layer=layer, bbox=bbox or payload.get("bbox"), payload=payload, ttl_seconds=ttl_seconds)
+        diag.update({k: v for k, v in layer_diag.items() if k not in diag})
+        if layer in {"bait", "bait-advanced"}:
+            diag.setdefault("polygons_returned", layer_diag.get("valid_object_count", 0))
+            diag.setdefault("valid_sst_count", payload.get("valid_ocean_point_count") or payload.get("water_mask_count") or 0)
+            diag.setdefault("water_mask_count", payload.get("water_mask_count") or 0)
+        elif layer in {"boats", "boater"}:
+            diag.setdefault("boats_returned", layer_diag.get("valid_object_count", 0))
+            diag.setdefault("ndbc_stations_considered", diag.get("stations_considered", 0))
+            diag.setdefault("stations_with_location", diag.get("stations_with_location", 0))
+            diag.setdefault("stations_with_wave", diag.get("stations_with_wave", 0))
+            diag.setdefault("rejected_land", diag.get("rejected_land", 0))
+            diag.setdefault("rejected_nan", diag.get("rejected_nan", 0))
+        elif layer in {"clouds", "rain", "weather"}:
+            diag.setdefault("cloud_cells_returned", len(payload.get("cloud_regions") or payload.get("items") or []))
+            diag.setdefault("precip_cells_returned", len(payload.get("precip_columns") or []))
+            diag.setdefault("data_ttl_seconds", layer_diag.get("ttl_seconds"))
+            diag.setdefault("render_ttl_seconds", layer_ttl_seconds("clouds" if layer == "clouds" else layer))
+        elif layer in {"current", "field"}:
+            diag.setdefault("vectors_returned", layer_diag.get("valid_object_count", 0))
+        payload.setdefault("ttl_seconds", layer_diag.get("ttl_seconds"))
+        payload.setdefault("incomplete", bool(layer_diag.get("incomplete")))
+        payload.setdefault("stale", bool(layer_diag.get("stale")))
+    except Exception as exc:
+        diag.setdefault("viewport_tile_diagnostics_error", str(exc))
+    return payload
 
 def _parse_bbox() -> dict[str, float] | None:
     raw = (request.args.get("bbox") or "").strip()
@@ -894,7 +931,9 @@ def create_gfs_blueprint(static_dir: Path) -> Blueprint:
 
     @bp.get("/gfs/api/weather")
     async def weather():
-        return jsonify(await _call_sync(_svc(static_dir).generate_weather_payload, _parse_bbox()))
+        bbox = _parse_bbox()
+        payload = await _call_sync(_svc(static_dir).generate_weather_payload, bbox)
+        return jsonify(_attach_endpoint_tile_diagnostics(payload, bbox, "weather"))
 
     @bp.get("/gfs/api/debug/provider/clouds")
     @bp.get("/gfs/api/clouds")
@@ -902,7 +941,7 @@ def create_gfs_blueprint(static_dir: Path) -> Blueprint:
         bbox = _parse_bbox()
         try:
             payload = await _call_sync(_svc(static_dir).cloud_tiles_payload, bbox, _parse_visible_bbox())
-            return _debug_json(payload, endpoint="/gfs/api/clouds", family="provider_debug", replacement="/gfs/api/cache/refresh?layers=clouds,rain")
+            return _debug_json(_attach_endpoint_tile_diagnostics(payload, bbox, "clouds"), endpoint="/gfs/api/clouds", family="provider_debug", replacement="/gfs/api/cache/refresh?layers=clouds,rain")
         except Exception as exc:
             log.exception("/gfs/api/clouds failed")
             shell = _endpoint_shell("/gfs/api/clouds", exc, bbox)
@@ -1013,7 +1052,7 @@ def create_gfs_blueprint(static_dir: Path) -> Blueprint:
                     "route_class": "compat_provider_debug",
                     "replacement": "/gfs/api/ocean-points?bbox=" + _bbox_to_query(bbox),
                 })
-                return _debug_json(out, endpoint="/gfs/api/field", family="compat_provider_debug", replacement="/gfs/api/ocean-points")
+                return _debug_json(_attach_endpoint_tile_diagnostics(out, bbox, "current"), endpoint="/gfs/api/field", family="compat_provider_debug", replacement="/gfs/api/ocean-points")
             return _json({
                 "ok": False,
                 "endpoint": "/gfs/api/field",
@@ -1033,7 +1072,8 @@ def create_gfs_blueprint(static_dir: Path) -> Blueprint:
     async def boats():
         bbox = _parse_bbox()
         try:
-            return _debug_json(await _call_sync(_svc(static_dir).boats_payload, bbox, _parse_visible_bbox()), endpoint="/gfs/api/boats", family="provider_debug", replacement="/gfs/api/cache/refresh?layers=boater")
+            payload = await _call_sync(_svc(static_dir).boats_payload, bbox, _parse_visible_bbox())
+            return _debug_json(_attach_endpoint_tile_diagnostics(payload, bbox, "boats"), endpoint="/gfs/api/boats", family="provider_debug", replacement="/gfs/api/cache/refresh?layers=boater")
         except Exception as exc:
             log.exception("/gfs/api/boats failed")
             shell = _endpoint_shell("/gfs/api/boats", exc, bbox)
@@ -1173,7 +1213,8 @@ def create_gfs_blueprint(static_dir: Path) -> Blueprint:
     async def bait():
         bbox = _parse_bbox()
         try:
-            return _debug_json(await _call_sync(_svc(static_dir).bait_advanced_payload, bbox, _parse_visible_bbox()), endpoint="/gfs/api/bait-advanced", family="provider_debug", replacement="/gfs/api/cache/refresh?layers=bait")
+            payload = await _call_sync(_svc(static_dir).bait_advanced_payload, bbox, _parse_visible_bbox())
+            return _debug_json(_attach_endpoint_tile_diagnostics(payload, bbox, "bait"), endpoint="/gfs/api/bait-advanced", family="provider_debug", replacement="/gfs/api/cache/refresh?layers=bait")
         except Exception as exc:
             log.exception("/gfs/api/bait-advanced failed")
             shell = _endpoint_shell("/gfs/api/bait-advanced", exc, bbox)

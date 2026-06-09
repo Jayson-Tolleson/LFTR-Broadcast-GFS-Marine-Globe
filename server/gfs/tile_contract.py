@@ -36,6 +36,148 @@ LAKE_ENV_NCSS_BASE = os.getenv("GFS_LAKE_ENV_NCSS_URL", NCSS_GFS_BASE)
 LAKE_ENV_NCSS_VARS = ["Temperature_height_above_ground", "u-component_of_wind_height_above_ground", "v-component_of_wind_height_above_ground", "Relative_humidity_height_above_ground", "Pressure_reduced_to_MSL_msl"]
 
 
+LAYER_TTL_DEFAULTS: dict[str, int] = {
+    "weather": int(os.getenv("GFS_WEATHER_TTL_SECONDS", "900") or "900"),
+    "current": int(os.getenv("GFS_CURRENT_TTL_SECONDS", "900") or "900"),
+    "clouds": int(os.getenv("GFS_CLOUD_DATA_TTL_SECONDS", "600") or "600"),
+    "rain": int(os.getenv("GFS_RAIN_TTL_SECONDS", "600") or "600"),
+    "sst": int(os.getenv("GFS_SST_TTL_SECONDS", "1800") or "1800"),
+    "bait": int(os.getenv("GFS_BAIT_TTL_SECONDS", os.getenv("GFS_BAIT_ADVANCED_CACHE_TTL_SECONDS", "900")) or "900"),
+    "boats": int(os.getenv("GFS_BOATS_TTL_SECONDS", "300") or "300"),
+    "boater": int(os.getenv("GFS_BOATS_TTL_SECONDS", "300") or "300"),
+    "fish": int(os.getenv("GFS_FISH_TTL_SECONDS", "1800") or "1800"),
+    "jetstream": int(os.getenv("GFS_JETSTREAM_TTL_SECONDS", "900") or "900"),
+}
+
+
+def layer_ttl_seconds(layer: str | None, fallback: int = 600) -> int:
+    key = str(layer or "").strip().lower().replace("_", "-")
+    return int(LAYER_TTL_DEFAULTS.get(key, fallback))
+
+
+def bbox_area_deg2(bbox: dict[str, Any] | list[float] | tuple[float, ...] | None) -> float:
+    b = normalize_bbox(bbox)
+    return max(0.0, float(b["east"] - b["west"])) * max(0.0, float(b["north"] - b["south"]))
+
+
+def split_dateline_bbox(bbox: dict[str, Any] | list[float] | tuple[float, ...] | None) -> list[dict[str, float]]:
+    """Return one or two clamped bboxes without expanding dateline-crossing viewports."""
+    if not isinstance(bbox, dict):
+        return [normalize_bbox(bbox)]
+    west = float(bbox.get("west", -130.0))
+    east = float(bbox.get("east", -60.0))
+    south = max(-89.9, min(89.9, float(bbox.get("south", 20.0))))
+    north = max(-89.9, min(89.9, float(bbox.get("north", 55.0))))
+    if north < south:
+        south, north = north, south
+    if east >= west:
+        return [normalize_bbox({"west": west, "south": south, "east": east, "north": north})]
+    return [
+        normalize_bbox({"west": west, "south": south, "east": 180.0, "north": north}),
+        normalize_bbox({"west": -180.0, "south": south, "east": east, "north": north}),
+    ]
+
+
+def payload_valid_count(payload: dict[str, Any] | None, layer: str | None = None) -> int:
+    if not isinstance(payload, dict):
+        return 0
+    layer_key = str(layer or "").lower()
+    if layer_key in {"bait", "bait-advanced"}:
+        bait = payload.get("bait") if isinstance(payload.get("bait"), dict) else {}
+        return max(
+            len(payload.get("polygons") or []),
+            len(payload.get("zones") or []),
+            len(bait.get("polygons") or []),
+            int(payload.get("polygon_count") or 0),
+        )
+    if layer_key in {"boats", "boater"}:
+        return max(len(payload.get("boats") or []), int(payload.get("count") or 0))
+    if layer_key in {"current", "field"}:
+        return max(len(payload.get("points") or []), len(payload.get("current_points") or []), int(payload.get("count") or 0))
+    if layer_key in {"clouds", "rain", "weather"}:
+        return max(
+            len(payload.get("items") or []),
+            len(payload.get("tiles") or []),
+            len(payload.get("cloud_regions") or []),
+            len(payload.get("precip_columns") or []),
+            len(payload.get("features") or []),
+            int(payload.get("count") or 0),
+        )
+    return max(len(payload.get("items") or []), len(payload.get("points") or []), int(payload.get("count") or 0))
+
+
+def cache_promotable_payload(payload: dict[str, Any] | None, layer: str | None = None) -> bool:
+    """Shared acceptance gate: empty/all-NaN payloads are not last-good cache candidates."""
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("incomplete") is True or payload.get("ok") is False:
+        return False
+    if payload_valid_count(payload, layer) <= 0:
+        return False
+    vals: list[Any] = []
+    for key in ("points", "current_points", "ocean_points", "boats", "bait_score"):
+        rows = payload.get(key)
+        if isinstance(rows, list):
+            vals.extend(rows[:128])
+    finite_seen = False
+    for row in vals:
+        if not isinstance(row, dict):
+            continue
+        for key in ("lat", "lon", "lng", "sst", "temp", "temperature", "u", "v", "speed", "score"):
+            try:
+                val = float(row.get(key))
+                if math.isfinite(val):
+                    finite_seen = True
+                    break
+            except Exception:
+                continue
+        if finite_seen:
+            break
+    if vals:
+        return finite_seen
+    return payload_valid_count(payload, layer) > 0
+
+
+def viewport_tile_diagnostics(
+    *,
+    layer: str,
+    bbox: dict[str, Any] | list[float] | tuple[float, ...] | None,
+    payload: dict[str, Any] | None = None,
+    grid: int | None = None,
+    ttl_seconds: int | None = None,
+) -> dict[str, Any]:
+    """Viewport/tile/cache diagnostic contract used by debug endpoints and scripts."""
+    b = normalize_bbox(bbox)
+    n = max(1, int(grid or os.getenv("GFS_DIAG_VIEWPORT_TILE_GRID", "6") or "6"))
+    tiles = split_viewport_tiles(b, n)
+    cache = payload.get("cache") if isinstance(payload, dict) and isinstance(payload.get("cache"), dict) else {}
+    valid = payload_valid_count(payload, layer) if isinstance(payload, dict) else 0
+    stale = bool(cache.get("stale") or "stale" in str(cache.get("mode") or "").lower())
+    hit = bool(cache.get("hit"))
+    incomplete = valid <= 0 and not stale
+    provider_fetch_count = 0 if hit else (0 if incomplete and str(cache.get("mode") or "").startswith("queued") else 1)
+    max_tile_area = max((bbox_area_deg2(t.bbox) for t in tiles), default=bbox_area_deg2(b))
+    return {
+        "viewport_tile_contract": "viewport_bbox_split_to_tiles_cache_first_no_global_fetch",
+        "bbox": b,
+        "tile_grid": {"rows": n, "cols": n},
+        "tiles_requested": len(tiles),
+        "tiles_hit": len(tiles) if hit else 0,
+        "tiles_missed": 0 if hit else len(tiles),
+        "tiles_fetched": 0 if hit else provider_fetch_count,
+        "tiles_stale_served": len(tiles) if stale else 0,
+        "provider_fetch_count": provider_fetch_count,
+        "provider_bbox_max_area": round(max_tile_area, 6),
+        "requested_bbox_area": round(bbox_area_deg2(b), 6),
+        "valid_object_count": valid,
+        "cache_status": str(cache.get("mode") or ("hit" if hit else "miss")),
+        "ttl_seconds": int(ttl_seconds if ttl_seconds is not None else layer_ttl_seconds(layer)),
+        "incomplete": bool(incomplete),
+        "stale": bool(stale),
+        "cache_promotable": cache_promotable_payload(payload, layer),
+    }
+
+
 def normalize_bbox(bbox: dict[str, Any] | list[float] | tuple[float, ...] | None) -> dict[str, float]:
     if isinstance(bbox, dict):
         west = float(bbox.get("west", bbox.get("minLon", bbox.get("left", -130.0))))
