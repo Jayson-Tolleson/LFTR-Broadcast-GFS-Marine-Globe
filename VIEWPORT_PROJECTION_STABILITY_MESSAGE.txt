@@ -1,0 +1,12 @@
+LFTR viewport projection + stability patch
+
+- Camera bbox is now heading/tilt projected instead of centered directly under the camera.
+- Fallback bbox shoots the visible data footprint forward along camera heading.
+- Giant world-start ocean bboxes are capped to a frustum-sized request so HYCOM does not serve a coarse unrelated middle slice.
+- Service restart policy is set to Restart=always so clean hypercorn exits do not leave the app down.
+- Runner exports malloc/HDF/single-worker compatibility vars.
+
+Expected debug contract:
+  bbox_contract_v4_projected_frustum
+  camera.source = camera_heading_tilt_projected_viewport
+  projectionContract = bbox_contract_v4_camera_heading_tilt_frustum_shot

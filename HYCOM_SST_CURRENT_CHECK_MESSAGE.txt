@@ -1,0 +1,22 @@
+LFTR Broadcast/GFS HYCOM SST + current check patch
+
+Purpose:
+- Make HYCOM current recovery stronger by enabling fallback attempts by default.
+- Primary attempt remains ESPC-D-V02 all_best surface: sst, sss, ssu, ssv.
+- Fallback attempt can try ESPC-D-V02 uv3z depth-0 current variables: water_u, water_v.
+- OISST remains SST-only fallback when HYCOM SST is empty.
+
+Why:
+- HYCOM catalogs show ESPC-D-V02 u3z archive/forecast paths and NCSS access for water_u/water_v.
+- Our prior package had HYCOM fallback attempts disabled by default, so it stopped after one all_best attempt.
+
+Install check:
+  cd ~/broadcast
+  ./scripts/check_hycom_sst_currents.sh http://127.0.0.1:8000 -119.2,33.3,-117.6,34.4
+
+Good signs in logs/source_meta:
+- selected_attempt = all_best_surface_no_ssh or uv3z_depth0_currents
+- current_source = hycom_ncss
+- sst_source = hycom_ncss or oisst_erddap_fallback
+- grid_shape is non-zero
+- live_ncss_ok true when both HYCOM current and SST gate are satisfied

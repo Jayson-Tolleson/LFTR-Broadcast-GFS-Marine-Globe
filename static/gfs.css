@@ -1,0 +1,234 @@
+:root{--glass:rgba(8,20,41,.68);--line:rgba(56,189,248,.35);--txt:#e6f4ff;--muted:rgba(230,244,255,.72);--green:#22c55e;--green2:#34d399;--dark:rgba(2,10,24,.58)}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:radial-gradient(circle at 14% 10%, #1d4ed8 0%, #081226 42%, #04070f 100%);color:var(--txt);font-family:Inter,Arial,sans-serif}
+.gfs-root{height:100vh;padding:10px;display:grid;grid-template-rows:auto 1fr;gap:10px}.glass{border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(14px);border-radius:14px}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;border:1px solid rgba(56,189,248,.22);background:rgba(5,12,24,.82);backdrop-filter:blur(10px);border-radius:14px;position:relative;z-index:2}.topbar-title{min-width:0}.topbar-title h1{margin:0;font-size:18px;line-height:1.1;font-weight:700;color:var(--txt);letter-spacing:.02em}.topbar-right{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}.overlay-pills{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.overlay-pill{padding:7px 11px;border-radius:999px;border:1px solid rgba(148,163,184,.40);background:rgba(9,16,30,.78);color:#d7ecff;font-size:12px;line-height:1;cursor:pointer;transition:all .16s ease}.overlay-pill.active{border-color:rgba(94,234,212,.58);background:rgba(10,44,41,.82);color:#baffec;box-shadow:0 0 0 1px rgba(45,212,191,.18) inset}.overlay-pill:not(.active){opacity:.82}.overlay-pill:hover{transform:translateY(-1px)}.topbar-status,#status{font-size:12px;color:var(--muted);white-space:nowrap}
+.globe-shell{position:relative;overflow:hidden}
+#globe{display:block;width:100%;height:calc(100vh - 96px)}
+.fallback{position:absolute;inset:12px;display:grid;place-items:center;background:rgba(5,10,20,.86);border-radius:12px}.hidden{display:none}
+.hud{position:fixed;top:14px;right:14px;width:420px;max-height:calc(100vh - 28px);overflow:auto;padding:12px;z-index:30;display:grid;gap:10px}.hud.closed{display:none}
+.hud-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.eyebrow{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.hud h2{margin:.1rem 0 .2rem;font-size:20px}.hud h3{margin:0 0 .55rem;font-size:13px;color:#93c5fd}.muted{color:var(--muted);font-size:12px}.hud-status-line{margin-top:6px;font-size:12px;color:#b7f7d2}
+.hud-card{border:1px solid rgba(125,211,252,.18);background:linear-gradient(180deg,rgba(7,18,38,.62),rgba(5,12,24,.72));border-radius:14px;padding:10px 12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.hero-card{padding:12px 12px 10px}.score-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-end}.hero-score{font-size:30px;font-weight:800;line-height:1;color:#d8ffe6}.hero-meta{font-size:12px;color:var(--muted);text-align:right;display:grid;gap:4px}
+.intel-meter{position:relative;height:12px;border-radius:999px;background:rgba(15,23,42,.72);overflow:hidden;border:1px solid rgba(148,163,184,.18);margin:8px 0 6px}.intel-meter span{display:block;height:100%;width:0%;background:linear-gradient(90deg,#0ea5e9,#34d399 55%,#86efac);box-shadow:0 0 18px rgba(52,211,153,.4)}.intel-meter.slim{height:8px;margin:0}
+.split-line{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:12px}.species-row{display:grid;grid-template-columns:84px 1fr 48px;align-items:center;gap:10px;margin-top:8px;font-size:13px}
+.intel-list{margin:0;padding-left:18px;display:grid;gap:6px}.intel-list li{color:#dbeafe;font-size:13px}
+.dual-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.video-frame{min-height:132px;border:1px solid rgba(148,163,184,.3);border-radius:10px;padding:6px;background:rgba(2,6,18,.38)}.video-frame video{width:100%;border-radius:8px}
+textarea{width:100%;min-height:70px;background:rgba(2,6,18,.65);color:var(--txt);border:1px solid rgba(148,163,184,.35);border-radius:8px;padding:10px}
+.row{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}button{background:rgba(15,23,42,.8);color:#dbeafe;border:1px solid rgba(148,163,184,.4);padding:8px 10px;border-radius:10px;cursor:pointer}button:hover{border-color:rgba(110,231,183,.55)}
+#hudReports{padding-left:18px;margin:8px 0 0;display:grid;gap:6px}#hudReports li{font-size:13px;color:#dbeafe}
+.live-overlay{position:fixed;left:14px;bottom:14px;width:240px;height:240px;z-index:40;padding:6px;display:flex;flex-direction:column;gap:5px}.live-overlay video{width:100%;height:190px;border-radius:10px;object-fit:cover;background:#000}
+.live-controls{display:flex;justify-content:space-between}
+@media (max-width: 860px){.hud{left:10px;right:10px;width:auto;max-height:70vh}.dual-grid{grid-template-columns:1fr}.topbar{align-items:flex-start;gap:10px}.topbar-right{flex-wrap:wrap;justify-content:flex-end}}
+
+
+.topbar-right{align-items:flex-start;}
+.topbar-status-wrap{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;justify-content:flex-end;}
+.topbar-status{padding-top:6px;white-space:nowrap;}
+.debug-prompt{width:400px;min-width:400px;max-width:400px;min-height:calc(1.35em * 3 + 12px);max-height:calc(1.35em * 85 + 12px);padding:6px 8px;border-radius:10px;border:1px solid rgba(148,163,184,.35);background:rgba(9,16,30,.72);color:#d7ecff;font:400 10px/1.35 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;resize:vertical;overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;word-break:break-word;box-shadow:inset 0 0 0 1px rgba(45,212,191,.06);}
+.debug-prompt::placeholder{color:rgba(215,236,255,.48);}
+.debug-prompt:focus{outline:none;border-color:rgba(94,234,212,.55);box-shadow:0 0 0 1px rgba(45,212,191,.18), inset 0 0 0 1px rgba(45,212,191,.08);}
+@media (max-width: 860px){.topbar-status-wrap{width:100%;justify-content:flex-start;}.debug-prompt{width:min(100%,400px);min-width:280px;max-width:100%;}}
+
+/* Layer pills are intentionally double-tap/double-click to avoid accidental status flips. */
+.overlay-pill.tap-armed,
+.pill.tap-armed {
+  outline: 2px solid rgba(255,255,255,.7);
+  box-shadow: 0 0 0 4px rgba(96,165,250,.25), 0 0 18px rgba(96,165,250,.35);
+}
+.overlay-pill.tap-armed::after,
+.pill.tap-armed::after {
+  content: " double tap";
+  opacity: .75;
+  font-size: .75em;
+  margin-left: .35rem;
+}
+
+
+/* Compact scene-cache progress strip under the pills.
+   Three bars: scene read/render, 2-minute TTL, and layer/build freshness. */
+.scene-progress-strip{
+  flex:1 1 100%;
+  width:100%;
+  display:grid;
+  grid-template-columns:repeat(3,minmax(150px,1fr));
+  gap:5px 8px;
+  margin-top:4px;
+  font:700 9px/1.15 Inter,Arial,sans-serif;
+  letter-spacing:.035em;
+  text-transform:uppercase;
+  color:rgba(219,234,254,.78);
+}
+.scene-progress-row{
+  min-width:0;
+  display:grid;
+  grid-template-columns:auto minmax(52px,1fr) auto;
+  align-items:center;
+  gap:5px;
+  padding:3px 5px;
+  border:1px solid rgba(125,211,252,.16);
+  border-radius:999px;
+  background:rgba(2,8,20,.38);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
+}
+.scene-progress-label{color:#93c5fd;white-space:nowrap;font-size:8px}
+.scene-progress-track{height:5px;overflow:hidden;border-radius:999px;background:rgba(15,23,42,.86);border:1px solid rgba(148,163,184,.16)}
+.scene-progress-fill{display:block;height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#38bdf8,#34d399 68%,#bef264);box-shadow:0 0 10px rgba(52,211,153,.38);transition:width .28s ease, opacity .28s ease}
+.scene-progress-text{min-width:44px;max-width:108px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:rgba(226,246,255,.86);font-size:8px;text-transform:none;letter-spacing:0}
+.scene-progress-row[data-state="busy"] .scene-progress-fill{opacity:.92;animation:gfsProgressPulse 1.2s ease-in-out infinite}
+.scene-progress-row[data-state="stale"] .scene-progress-fill{background:linear-gradient(90deg,#f59e0b,#facc15)}
+.scene-progress-row[data-state="error"] .scene-progress-fill{background:linear-gradient(90deg,#ef4444,#f97316)}
+@keyframes gfsProgressPulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.32)}}
+@media (max-width:980px){.scene-progress-strip{grid-template-columns:1fr}.scene-progress-text{max-width:130px}}
+
+
+.gfs-polygon-hover-tip {
+  position: fixed;
+  z-index: 100000;
+  max-width: min(520px, calc(100vw - 24px));
+  padding: 10px 12px;
+  border: 1px solid rgba(130,220,255,0.42);
+  border-radius: 14px;
+  background: rgba(8,18,28,0.76);
+  color: rgba(238,249,255,0.96);
+  box-shadow: 0 14px 34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.12);
+  backdrop-filter: blur(14px);
+  font-size: 12px;
+  line-height: 1.32;
+  max-height: min(360px, calc(100vh - 24px));
+  overflow-y: auto;
+  pointer-events: none;
+  white-space: normal;
+}
+.gfs-polygon-hover-tip.hidden {
+  display: none;
+}
+
+/* Cursor-only hover intel: never reserve title-bar space for hover payloads. */
+.title-hover-hud{display:none!important;}
+
+.gfs-polygon-hover-tip .gfs-hover-title {
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #bff1ff;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+/* Fixed title-bar hover/intel HUD removed: polygon intel now follows cursor. */
+.title-hover-hud{
+  flex:1 1 320px;
+  min-width:220px;
+  max-width:520px;
+  height:54px;
+  overflow:hidden;
+  border:1px solid rgba(125,211,252,.22);
+  border-radius:12px;
+  background:linear-gradient(180deg,rgba(7,18,38,.58),rgba(5,12,24,.64));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+  padding:5px 8px;
+}
+.title-hover-title{
+  font-size:8px;
+  line-height:1.1;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:#93c5fd;
+  font-weight:800;
+  margin-bottom:2px;
+}
+.title-hover-body{
+  max-height:38px;
+  overflow:auto;
+  color:#dbeafe;
+  font:500 8px/1.25 Inter,Arial,sans-serif;
+  scrollbar-width:thin;
+}
+.title-hover-body .gfs-hover-title{font-weight:800;color:#bff1ff;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+.title-hover-body div{margin:0 0 1px}
+@media (max-width: 980px){.title-hover-hud{order:3;flex-basis:100%;max-width:none}.topbar{flex-wrap:wrap}}
+
+.title-hover-body .gfs-hover-section{margin-top:2px;color:#93c5fd;font-weight:800;text-transform:uppercase;letter-spacing:.06em}
+.title-hover-body .gfs-hover-kv,.gfs-polygon-hover-tip .gfs-hover-kv{display:grid;grid-template-columns:minmax(64px,0.62fr) minmax(80px,1fr);gap:4px;align-items:start;border-top:1px solid rgba(148,163,184,.10);padding-top:1px}
+.title-hover-body .gfs-hover-kv span,.gfs-polygon-hover-tip .gfs-hover-kv span{color:#93c5fd;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.title-hover-body .gfs-hover-kv b,.gfs-polygon-hover-tip .gfs-hover-kv b{color:#e0f2fe;font-weight:650;overflow-wrap:anywhere}
+
+/* Nightfall-aware /gfs atmosphere.  Backend /gfs/api/sky sets body[data-sky]. */
+:root{
+  --gfs-atmosphere-opacity:1;
+  --gfs-cloud-opacity:1;
+  --gfs-horizon-glow-opacity:.12;
+}
+body[data-sky="golden"]{background:radial-gradient(circle at 18% 8%, #f59e0b 0%, #14335f 35%, #07111f 100%)}
+body[data-sky="civil"]{background:radial-gradient(circle at 18% 8%, #334155 0%, #091a33 45%, #030711 100%)}
+body[data-sky="nautical"],
+body[data-sky="astronomical"],
+body[data-sky="night"]{background:radial-gradient(circle at 50% 100%, rgba(37,99,235,.22) 0%, rgba(4,8,18,.98) 48%, #01030a 100%)}
+body[data-sky="night"] .glass,
+body[data-sky="astronomical"] .glass{background:rgba(2,8,20,.74);border-color:rgba(125,211,252,.24)}
+body[data-sky="night"] .hud-card,
+body[data-sky="astronomical"] .hud-card{background:linear-gradient(180deg,rgba(3,10,24,.72),rgba(1,5,14,.82))}
+body[data-sky="night"] [data-gfs-layer="clouds"],
+body[data-sky="astronomical"] [data-gfs-layer="clouds"],
+body[data-sky="nautical"] [data-gfs-layer="clouds"],
+body[data-sky="night"] [data-cloud-shell],
+body[data-sky="astronomical"] [data-cloud-shell],
+body[data-sky="nautical"] [data-cloud-shell]{opacity:var(--gfs-cloud-opacity)}
+.gfs-starfield{position:absolute;inset:0;z-index:0;pointer-events:none;opacity:0;transition:opacity .8s ease;overflow:hidden;background:radial-gradient(circle at 50% 88%, rgba(59,130,246,var(--gfs-horizon-glow-opacity)) 0%, rgba(59,130,246,0) 42%);contain:paint;will-change:opacity}
+.gfs-starfield.visible{opacity:1}
+.gfs-stars{position:absolute;left:0;top:0;width:1px;height:1px;border-radius:50%;background:rgba(255,255,255,.85);opacity:.78}
+.gfs-horizon-glow{position:absolute;left:-10%;right:-10%;bottom:-8%;height:38%;background:radial-gradient(ellipse at center, rgba(96,165,250,var(--gfs-horizon-glow-opacity)) 0%, rgba(96,165,250,0) 68%)}
+body[data-gfs-stars="off"] .gfs-starfield{opacity:0}
+.globe-shell > gmp-map-3d,
+.globe-shell > .fallback{position:relative;z-index:1}
+
+
+/* Pill state clarity: active = route/render on, inactive = no route, unavailable = source missing. */
+.overlay-pill:not(.active){opacity:.58;background:rgba(15,23,42,.40);box-shadow:none}
+.overlay-pill.unavailable{opacity:.44;border-color:rgba(248,113,113,.55);color:#fecaca;cursor:not-allowed}
+.overlay-pill.unavailable::after{content:' data needed';font-size:9px;margin-left:4px;color:#fca5a5;text-transform:none}
+
+
+/* Inland Waters is mandatory/always-on. While first-run NHD tiles download, keep
+   the pill visibly ON instead of the generic dark source-missing style. */
+.overlay-pill[data-layer="inland-water"].building,
+.overlay-pill[data-layer="inland-water"][data-source-status="building"]{
+  opacity:1;
+  border-color:rgba(94,234,212,.72);
+  background:linear-gradient(135deg,rgba(10,44,41,.92),rgba(11,74,64,.84));
+  color:#baffec;
+  cursor:pointer;
+  box-shadow:0 0 0 1px rgba(45,212,191,.24) inset,0 0 18px rgba(20,184,166,.18);
+}
+.overlay-pill[data-layer="inland-water"].building::after,
+.overlay-pill[data-layer="inland-water"][data-source-status="building"]::after{
+  content:' building';
+  font-size:9px;
+  margin-left:4px;
+  color:#99f6e4;
+  text-transform:none;
+}
+.overlay-pill[data-layer="inland-water"].unavailable::after{content:' building'}
+
+
+/* Cloud pill opacity control: tiny shell-opacity slider beside Clouds pill. */
+.cloud-pill-wrap{display:inline-flex;align-items:center;gap:6px;flex-wrap:nowrap}
+.cloud-alpha-control{display:inline-flex;align-items:center;gap:4px;padding:4px 7px;border:1px solid rgba(180,220,255,.28);border-radius:999px;background:rgba(6,14,26,.58);color:#d7ecff;font-size:10px;line-height:1;user-select:none}
+.cloud-alpha-control input{width:58px;height:14px;accent-color:#bfeaff;cursor:pointer}
+.cloud-alpha-control b{min-width:30px;text-align:right;font-size:10px;font-weight:600;color:#f1f8ff}
+@media (max-width:720px){.cloud-alpha-control{padding:3px 5px}.cloud-alpha-control input{width:46px}.cloud-alpha-control span{display:none}}
+
+/* FISHAI title-bar direction/search command line.  It is intentionally one
+   physical line at 10px so it can live inside the title pane without stealing
+   the globe.  Long prompts scroll horizontally inside the input. */
+.fishai-bar{margin-top:5px;display:grid;grid-template-columns:auto minmax(210px,360px) auto;align-items:center;gap:5px;max-width:min(560px,48vw)}
+.fishai-label{font:900 9px/1 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;letter-spacing:.12em;color:#67e8f9;text-shadow:0 0 8px rgba(103,232,249,.32)}
+.fishai-input{height:20px;min-width:0;width:100%;border-radius:999px;border:1px solid rgba(103,232,249,.35);background:rgba(2,8,20,.62);color:#e0faff;padding:3px 9px;font:600 10px/1.1 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;white-space:nowrap;overflow-x:auto;overflow-y:hidden;text-overflow:clip;box-shadow:inset 0 0 0 1px rgba(45,212,191,.06),0 0 12px rgba(14,165,233,.10)}
+.fishai-input::placeholder{color:rgba(209,250,229,.47)}
+.fishai-input:focus{outline:none;border-color:rgba(134,239,172,.72);box-shadow:0 0 0 1px rgba(74,222,128,.18),0 0 18px rgba(45,212,191,.18)}
+.fishai-run{height:20px;padding:2px 8px;border-radius:999px;font:900 9px/1 Inter,Arial,sans-serif;letter-spacing:.06em;text-transform:uppercase;border-color:rgba(134,239,172,.45);color:#dcfce7;background:linear-gradient(135deg,rgba(6,78,59,.75),rgba(8,47,73,.75));white-space:nowrap}
+.fishai-bar.running .fishai-run{opacity:.6;cursor:wait}.fishai-bar.running .fishai-input{border-color:rgba(250,204,21,.65)}
+.fishai-output{margin-top:3px;max-width:min(610px,52vw);height:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 9px/1.2 Inter,Arial,sans-serif;color:rgba(187,247,208,.88);letter-spacing:.015em}
+@media (max-width:980px){.topbar-title{flex:1 1 100%;width:100%}.fishai-bar{grid-template-columns:auto minmax(160px,1fr) auto;max-width:100%}.fishai-output{max-width:100%}}
+@media (max-width:640px){.fishai-bar{grid-template-columns:1fr auto}.fishai-label{display:none}.fishai-run{padding:2px 7px}.fishai-output{height:24px;white-space:normal}}

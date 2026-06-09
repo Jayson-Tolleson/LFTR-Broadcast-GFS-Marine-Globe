@@ -1,0 +1,90 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Watch</title>
+<style>
+:root{--bg:#07090f;--pane:#12151fbb;--line:#2f3649;--text:#e8eefc;--muted:#a7b0c8;--accent:#7dd3fc}
+body{margin:0;background:radial-gradient(circle at 20% 10%,#1b2030 0,#07090f 40%,#04050a 100%);color:var(--text);font-family:Inter,Arial,sans-serif}
+.app{display:grid;grid-template-rows:auto 1fr;height:100vh}
+.hdr{display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid #1f2434;background:#090d16f2;backdrop-filter:blur(10px);overflow:auto}
+.badge{display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid #30384e;border-radius:999px;background:#121a2cdd;font-size:12px}
+.main{position:relative;min-height:0;padding:12px}
+.glass{background:var(--pane);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 26px #0007, inset 0 1px 0 #fff1;backdrop-filter:blur(10px)}
+.videoWrap{position:relative;height:calc(100vh - 84px);overflow:hidden;aspect-ratio:16/9}
+video{width:100%;height:100%;object-fit:contain;background:#000;aspect-ratio:16/9}
+#liveOverlay{display:none !important}
+.statusOverlay{position:absolute;left:14px;bottom:14px;display:flex;flex-direction:column;gap:8px;z-index:4}
+.statusChip{padding:8px 10px;border-radius:10px;background:#111928cc;border:1px solid #334161;font-size:12px;color:#dbe7ff}
+.joinOverlay{display:none !important;pointer-events:none !important}
+.joinCard{display:none !important}
+.btn{padding:8px 12px;border-radius:999px;border:1px solid #3a435c;background:#151c2fee;color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:8px;font-size:12px}
+.btn:hover{border-color:#5f6c91}
+.chatDock{position:absolute;top:14px;right:14px;bottom:14px;width:min(380px,92vw);display:flex;flex-direction:column;z-index:5;transition:transform .24s ease,opacity .24s ease}
+.chatDock.collapsed{transform:translateX(calc(100% - 42px));opacity:.95}
+.chatHead{display:flex;align-items:center;justify-content:space-between;padding:10px;border-bottom:1px solid #252d40}
+.chatTools{display:flex;gap:8px;padding:8px;border-bottom:1px solid #252d40;flex-wrap:wrap}
+.chatList{flex:1;overflow:auto;padding:10px;min-height:120px}
+.entry{padding:8px;border:1px solid #2c3958;border-radius:10px;margin-bottom:8px;background:#0d1423}
+.entry .meta{font-size:11px;color:var(--muted);margin-bottom:4px}
+.input{display:flex;gap:6px;padding:8px;border-top:1px solid #27324a}
+textarea{flex:1;min-height:58px;max-height:120px;background:#0b1220;color:#eaf1ff;border:1px solid #334161;border-radius:8px;padding:8px;resize:vertical}
+.searchPane{display:none;border-top:1px solid #27324a;padding:8px}
+.searchPane.open{display:block}
+.searchResults{display:grid;gap:8px;max-height:200px;overflow:auto}
+.searchItem{padding:8px;border:1px solid #334161;border-radius:10px;background:#0c1422}
+.searchItem a{color:#7dd3fc;text-decoration:none}
+.searchMeta{font-size:11px;color:#a7b0c8}
+
+.chatFrame{width:100%;height:280px;border:1px solid #334161;border-radius:10px;background:#020617;margin-top:8px}
+.chatFrame.imageFrame{height:260px}
+.chatFrameLink{display:inline-block;margin-top:6px;color:#7dd3fc;text-decoration:none;font-size:12px}
+.attachmentMeta{font-size:11px;color:#a7b0c8;margin-top:4px}
+@media (max-width:980px){.chatDock{width:min(420px,96vw)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="hdr">
+    <span class="badge" id="label">PUBLIC ACCESS</span>
+    <span class="badge" id="mode">STANDBY</span>
+    <span class="badge" id="conn">connecting</span>
+    <span class="badge" id="ai">AI idle</span>
+    <span class="badge" id="watchers">watchers 0</span>
+  </div>
+  <div class="main">
+    <div class="glass videoWrap">
+      <video id="remoteVideo" autoplay playsinline muted controls width="1920" height="1080"></video>
+      <div class="statusOverlay" id="standby">
+        <div class="statusChip" id="statusText">Waiting for live stream…</div>
+      </div>
+    </div>
+
+    <aside id="chatDock" class="chatDock glass">
+      <div class="chatHead">
+        <strong>Room Chat HUD</strong>
+        <button id="chatCollapseBtn" class="btn" type="button">Collapse</button>
+      </div>
+      <div class="chatTools">
+        <button id="attachBtn" class="btn" type="button">Attach</button>
+        <button id="webBtn" class="btn" type="button">Web Search</button>
+        <button id="aiEnableBtn" class="btn" type="button">AI: off</button>
+        <button id="ttsMonBtn" class="btn" type="button">AI voice: off</button>
+        <button id="searchCloseBtn" class="btn" type="button">Hide Search</button>
+        <input id="file" type="file" accept="image/*,video/*,.pdf,.txt" hidden>
+      </div>
+      <div id="chat" class="chatList"></div>
+      <div id="searchPane" class="searchPane">
+        <div id="searchResults" class="searchResults"></div>
+      </div>
+      <div class="input">
+        <textarea id="chatInput" placeholder="Message room…"></textarea>
+        <button id="sendBtn" class="btn" type="button">Send</button>
+      </div>
+    </aside>
+  </div>
+</div>
+<script src="/static/js/watch.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+listening-port=__TURN_PORT__
+__TLS_PORT_LINE__
+listening-ip=0.0.0.0
+fingerprint
+lt-cred-mech
+realm=__DOMAIN__
+server-name=__DOMAIN__
+user=__TURN_USER__:__TURN_PASS__
+external-ip=__TURN_EXTERNAL_IP__/__TURN_INTERNAL_IP__
+__TLS_CERT_BLOCK__
+min-port=__TURN_MIN_PORT__
+max-port=__TURN_MAX_PORT__
+no-multicast-peers
+no-cli
+stale-nonce
+verbose

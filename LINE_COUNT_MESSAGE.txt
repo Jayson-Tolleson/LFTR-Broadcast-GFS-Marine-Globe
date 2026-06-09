@@ -1,0 +1,14 @@
+LFTR Broadcast GFS viewport projection + stability installer
+
+Line count:
+Python + JavaScript: 34,909
+Python:             20,150
+JavaScript:         14,759
+Source-ish total:   39,698
+
+Patch summary:
+- Camera/tilt/heading projected viewport bbox.
+- Ocean/inland bbox is no longer a centered under-camera crop.
+- World-start ocean bbox capped to a useful projected frustum.
+- Service Restart=always so clean Hypercorn exits do not leave app down.
+- Runner exports HDF/malloc/single-worker compatibility envs.

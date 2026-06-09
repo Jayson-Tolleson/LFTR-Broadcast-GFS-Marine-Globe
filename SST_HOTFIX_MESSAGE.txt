@@ -1,0 +1,17 @@
+LFTR Broadcast/GFS SST hotfix
+
+Problem addressed:
+- Ocean SST could disappear when the HYCOM NCSS surface bundle did not return a usable `sst` grid.
+- Bait, boats, shark intel, and hover water temperature need SST even if live current vectors are missing or HYCOM changes/stalls.
+
+Fix included:
+- Keep HYCOM NCSS as the primary ocean/current source.
+- Add NOAA OISST ERDDAP observed-SST fallback when HYCOM SST is empty.
+- Keep current fallback strict; this does not fake live currents.
+- Add source_meta.sst_source and source_meta.sst_fallback diagnostics.
+- Bump HYCOM cache schema to avoid stale empty-SST cache hits after install.
+
+Useful logs to watch:
+- "oisst erddap SST fallback used"
+- "hycom subset empty"
+- source_meta.sst_source = "oisst_erddap_fallback" or "hycom_ncss"

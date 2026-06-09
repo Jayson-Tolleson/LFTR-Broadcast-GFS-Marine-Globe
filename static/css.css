@@ -1,0 +1,57 @@
+:root {
+  --bg: #0b1220;
+  --panel: rgba(17, 24, 39, 0.72);
+  --line: rgba(96, 165, 250, 0.35);
+  --accent-cyan: #22d3ee;
+  --accent-pink: #f472b6;
+  --accent-lime: #84cc16;
+  --text: #e6f4ff;
+}
+
+body {
+  background: radial-gradient(circle at 15% 10%, #1f3b77 0%, #0b1220 52%, #070b15 100%);
+  color: var(--text);
+}
+
+.card-glass,
+.chat,
+.videoWrap,
+.badge,
+.btn,
+.hud,
+.card {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.feature-light {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.feature-light.on {
+  animation: pulse-light 1.15s infinite;
+}
+
+@keyframes pulse-light {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.92); }
+}
+
+/* Double-tap safety for live-control pills. Single taps arm the button; double taps actually toggle. */
+.btn.tap-armed {
+  outline: 2px solid rgba(255,255,255,.65);
+  box-shadow: 0 0 0 4px rgba(96,165,250,.25), 0 0 18px rgba(96,165,250,.35);
+}
+.btn.tap-armed::after {
+  content: " double tap";
+  opacity: .75;
+  font-size: .75em;
+  margin-left: .35rem;
+}
+
+.entry.stt-entry { border-left: 3px solid rgba(94, 234, 212, .7); background: rgba(94, 234, 212, .06); }
+.entry.stt-entry b { color: #8fffea; }

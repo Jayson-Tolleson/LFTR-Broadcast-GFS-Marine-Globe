@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LFTR.biz</title>
+
+<style>
+body {
+    margin: 0;
+    font-family: 'Trebuchet MS', Arial, sans-serif;
+    background: #1339de;
+    color: white;
+}
+
+header {
+    text-align: center;
+    padding: 20px;
+    background: #0f2fb5;
+}
+
+h1 {
+    margin: 0;
+    font-size: 2rem;
+}
+
+.status {
+    margin-top: 10px;
+    font-size: 1rem;
+}
+
+.section {
+    padding: 20px;
+}
+
+.frame-container {
+    background: black;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 25px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.4);
+}
+.frame-container:first-of-type { aspect-ratio: 16 / 9; }
+.frame-container:first-of-type iframe { height: 100%; }
+
+iframe {
+    width: 100%;
+    height: 600px;
+    border: none;
+}
+
+/* Larger screens */
+@media (min-width: 1400px) {
+    iframe {
+        height: 800px;
+    }
+}
+
+/* Small/mobile */
+@media (max-width: 768px) {
+    iframe {
+        height: 400px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1> LFTR.biz</h1>
+    <div class="status">AI Status: <span id="ai">Loading...</span></div>
+</header>
+
+<div class="section">
+
+    <div class="frame-container">
+        <iframe src="/watch" width="1920" height="1080" allow="autoplay; fullscreen; picture-in-picture"></iframe>
+    </div>
+
+    <div class="frame-container">
+        <iframe src="/gfs"></iframe>
+    </div>
+
+    <div class="frame-container">
+        <iframe
+            src="https://www.youtube.com/embed/videoseries?list=PLVIftPRSOIthwubkq9WzCSk7B-mqaJ89B"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen>
+        </iframe>
+    </div>
+
+</div>
+
+<script>
+fetch('/ai_status')
+  .then(r => r.json())
+  .then(j => {
+      document.getElementById('ai').textContent =
+          j.ai_available + ' (enabled=' + j.ai_enabled + ') - server tts=' + j.tts_available;
+  })
+  .catch(() => {
+      document.getElementById('ai').textContent = 'Unavailable';
+  });
+</script>
+
+</body>
+</html>
